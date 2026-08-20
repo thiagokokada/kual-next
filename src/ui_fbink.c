@@ -158,6 +158,7 @@ static int ui_init(UI *ui) {
     ui->button_x = ui->gap / 2U + ui->side_w + ui->gap;
     ui->button_w = width - 2U * ui->button_x;
     ui->button_h = (ui->list_h - (KUAL_PAGE_ROWS - 1U) * ui->gap) / KUAL_PAGE_ROWS;
+    ui->list_h = KUAL_PAGE_ROWS * ui->button_h + (KUAL_PAGE_ROWS - 1U) * ui->gap;
     if (ui_inputs_open(ui) != 0) return -1;
     return 0;
 }
