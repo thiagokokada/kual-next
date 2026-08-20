@@ -35,7 +35,11 @@ typedef struct {
     int fbfd;
     FBInkConfig draw_cfg;
     FBInkOTConfig text_cfg;
+    FBInkOTConfig symbol_cfg;
+    FBInkOTConfig music_symbol_cfg;
     bool opentype_ready;
+    bool symbols_ready;
+    bool music_symbols_ready;
     FBInkState state;
     InputDevice inputs[MAX_INPUTS];
     size_t input_count;
@@ -85,6 +89,14 @@ static void ui_cleanup(UI *ui) {
         (void)fbink_free_ot_fonts_v2(&ui->text_cfg);
         ui->opentype_ready = false;
     }
+    if (ui->symbols_ready) {
+        (void)fbink_free_ot_fonts_v2(&ui->symbol_cfg);
+        ui->symbols_ready = false;
+    }
+    if (ui->music_symbols_ready) {
+        (void)fbink_free_ot_fonts_v2(&ui->music_symbol_cfg);
+        ui->music_symbols_ready = false;
+    }
     if (ui->fbfd >= 0) { fbink_close(ui->fbfd); ui->fbfd = -1; }
 }
 
@@ -128,6 +140,14 @@ static int ui_init(UI *ui) {
     if (access(font, R_OK) == 0 &&
         fbink_add_ot_font_v2(font, FNT_REGULAR, &ui->text_cfg) == 0)
         ui->opentype_ready = true;
+    const char *symbols = "/mnt/us/kual-next/fonts/NotoSansSymbols2-Regular.otf";
+    if (access(symbols, R_OK) == 0 &&
+        fbink_add_ot_font_v2(symbols, FNT_REGULAR, &ui->symbol_cfg) == 0)
+        ui->symbols_ready = true;
+    const char *music_symbols = "/mnt/us/kual-next/fonts/NotoSansSymbols.ttf";
+    if (access(music_symbols, R_OK) == 0 &&
+        fbink_add_ot_font_v2(music_symbols, FNT_REGULAR, &ui->music_symbol_cfg) == 0)
+        ui->music_symbols_ready = true;
     unsigned int width = ui->state.view_width, height = ui->state.view_height;
     ui->gap = width / 190U; if (ui->gap < 4U) ui->gap = 4U;
     ui->top_h = height / 25U; if (ui->top_h < 28U) ui->top_h = 28U;
@@ -166,11 +186,11 @@ static void print_at(UI *ui, int x, int y, const char *text, bool centered) {
 
 static KualEntry *current_menu(UI *ui) { return ui->nav[ui->depth]; }
 
-static void print_area(UI *ui, const char *text, unsigned int x, unsigned int y,
-                       unsigned int width, unsigned int height, unsigned int size,
-                       bool centered) {
-    if (ui->opentype_ready) {
-        FBInkOTConfig cfg = ui->text_cfg;
+static void print_area_font(UI *ui, const char *text, unsigned int x, unsigned int y,
+                            unsigned int width, unsigned int height, unsigned int size,
+                            bool centered, const FBInkOTConfig *font) {
+    if (font) {
+        FBInkOTConfig cfg = *font;
         cfg.margins.left = (short)x;
         cfg.margins.right = (short)(ui->state.view_width - x - width);
         cfg.margins.top = (short)y;
@@ -191,6 +211,78 @@ static void print_area(UI *ui, const char *text, unsigned int x, unsigned int y,
              (int)(y + (height > ui->state.font_h ? (height - ui->state.font_h) / 2U : 0U)),
              fallback, centered);
     free(fallback);
+}
+
+static void print_area(UI *ui, const char *text, unsigned int x, unsigned int y,
+                       unsigned int width, unsigned int height, unsigned int size,
+                       bool centered) {
+    print_area_font(ui, text, x, y, width, height, size, centered,
+                    ui->opentype_ready ? &ui->text_cfg : NULL);
+}
+
+static unsigned int measure_text(UI *ui, const char *text, unsigned int size,
+                                 const FBInkOTConfig *font) {
+    if (!font || !text || !*text) return 0U;
+    FBInkOTConfig cfg = *font;
+    cfg.margins.left = cfg.margins.top = 0;
+    cfg.margins.right = cfg.margins.bottom = 0;
+    cfg.size_px = (unsigned short)size;
+    cfg.compute_only = true;
+    cfg.no_truncation = false;
+    cfg.is_centered = false;
+    FBInkConfig draw = ui->draw_cfg;
+    draw.halign = NONE;
+    draw.valign = NONE;
+    draw.is_centered = false;
+    draw.no_refresh = true;
+    FBInkOTFit fit = {0};
+    if (fbink_print_ot(ui->fbfd, text, &cfg, &draw, &fit) < 0) return 0U;
+    return fit.bbox.width;
+}
+
+static void print_entry_label(UI *ui, const KualEntry *entry,
+                              unsigned int x, unsigned int y,
+                              unsigned int width, unsigned int height,
+                              unsigned int size) {
+    if (!ui->opentype_ready || !ui->symbols_ready) {
+        char fallback[768];
+        snprintf(fallback, sizeof(fallback), "%s%s%s",
+                 entry->checked ? "[x] " : "", entry->name,
+                 entry->child_count ? " v" : "");
+        print_area(ui, fallback, x, y, width, height, size, true);
+        return;
+    }
+
+    unsigned int check_w = entry->checked ? measure_text(ui, "✓", size, &ui->symbol_cfg) : 0U;
+    unsigned int text_w = measure_text(ui, entry->name, size, &ui->text_cfg);
+    unsigned int down_w = entry->child_count ? measure_text(ui, "▽", size, &ui->symbol_cfg) : 0U;
+    unsigned int spacing = size / 4U; if (spacing < 4U) spacing = 4U;
+    unsigned int left_w = check_w ? check_w + spacing : 0U;
+    unsigned int right_w = down_w ? spacing + down_w : 0U;
+    unsigned int total = left_w + text_w + right_w;
+
+    if (text_w && total <= width) {
+        unsigned int cursor = x + (width - total) / 2U;
+        if (check_w) {
+            print_area_font(ui, "✓", cursor, y, check_w + 1U, height, size, false, &ui->symbol_cfg);
+            cursor += left_w;
+        }
+        print_area_font(ui, entry->name, cursor, y, text_w + 1U, height, size, false, &ui->text_cfg);
+        cursor += text_w;
+        if (down_w)
+            print_area_font(ui, "▽", cursor + spacing, y, down_w + 1U, height, size, false, &ui->symbol_cfg);
+        return;
+    }
+
+    if (left_w + right_w >= width) {
+        print_area(ui, entry->name, x, y, width, height, size, true);
+        return;
+    }
+    if (check_w)
+        print_area_font(ui, "✓", x, y, left_w, height, size, true, &ui->symbol_cfg);
+    print_area(ui, entry->name, x + left_w, y, width - left_w - right_w, height, size, true);
+    if (down_w)
+        print_area_font(ui, "▽", x + width - right_w, y, right_w, height, size, true, &ui->symbol_cfg);
 }
 
 static void line_gray(UI *ui, unsigned int x, unsigned int y,
@@ -280,18 +372,17 @@ static void ui_draw(UI *ui) {
         unsigned int y = ui->list_y + (unsigned int)row * (ui->button_h + ui->gap);
         rounded_outline(ui, ui->button_x, y, ui->button_w, ui->button_h,
                         radius, 1U, 55U);
-        const char *label;
-        char entry_label[768];
-        if (special) label = ui->depth ? "/" : "× Quit";
-        else {
+        if (special) {
+            const char *label = ui->depth ? "/" : "× Quit";
+            print_area(ui, label, ui->button_x + ui->gap, y,
+                       ui->button_w - 2U * ui->gap, ui->button_h,
+                       ui->state.view_width / 30U, true);
+        } else {
             KualEntry *entry = &menu->children[index];
-            snprintf(entry_label, sizeof(entry_label), "%s%s", entry->name,
-                     entry->child_count ? " ▽" : "");
-            label = entry_label;
+            print_entry_label(ui, entry, ui->button_x + ui->gap, y,
+                              ui->button_w - 2U * ui->gap, ui->button_h,
+                              ui->state.view_width / 30U);
         }
-        print_area(ui, label, ui->button_x + ui->gap, y,
-                   ui->button_w - 2U * ui->gap, ui->button_h,
-                   ui->state.view_width / 30U, true);
     }
 
     draw_triangle(ui, outer_x + ui->side_w / 2U,
@@ -394,10 +485,7 @@ static int run_background(UI *ui, KualEntry *entry) {
     if (pid < 0) { snprintf(ui->status, sizeof(ui->status), "Launch failed: %s", strerror(errno)); free(command); return -1; }
     if (entry->show_status && !entry->internal) snprintf(ui->status, sizeof(ui->status), "%s", command);
     free(command);
-    if (entry->checked_after && strncmp(entry->name, "[x] ", 4)) {
-        size_t n = strlen(entry->name) + 5; char *checked = kual_xcalloc(n, 1);
-        snprintf(checked, n, "[x] %s", entry->name); free(entry->name); entry->name = checked;
-    }
+    if (entry->checked_after) entry->checked = true;
     if (entry->show_date) {
         time_t now = time(NULL); struct tm local; localtime_r(&now, &local);
         strftime(ui->status, sizeof(ui->status), "%Y-%m-%d %H:%M:%S", &local);

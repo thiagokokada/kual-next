@@ -20,7 +20,7 @@
         zip
       ];
       devPackages = with pkgs; [
-        bash file gcc git gnumake gnutar patch pkg-config unzip zip
+        bash file fontconfig gcc git gnumake gnutar patch perl pkg-config unzip zip
       ];
       toolchainFhs = pkgs.buildFHSEnv {
         name = "kual-toolchain-fhs";

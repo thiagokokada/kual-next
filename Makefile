@@ -38,6 +38,7 @@ $(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h
 
 test: $(HOST_BINARY)
 	sh ./tests/run.sh $(HOST_BINARY)
+	sh ./tests/check-fonts.sh
 
 toolchain:
 	KUAL_TC_ROOT="$(TC_ROOT)" $(TOOLCHAIN_FHS) -c 'exec sh ./scripts/bootstrap-toolchain.sh'
@@ -74,6 +75,8 @@ package: check
 	cp third_party/JSMN-LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/jsmn-MIT.txt"
 	cp assets/fonts/OFL.txt "$(BUILD_DIR)/package/kual-next/LICENSES/Noto-SIL-OFL-1.1.txt"
 	cp assets/fonts/NotoSans.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSans.ttf"
+	cp assets/fonts/NotoSansSymbols.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSansSymbols.ttf"
+	cp assets/fonts/NotoSansSymbols2-Regular.otf "$(BUILD_DIR)/package/kual-next/fonts/NotoSansSymbols2-Regular.otf"
 	cp "$(FBINK_DIR)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +

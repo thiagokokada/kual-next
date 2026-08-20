@@ -34,6 +34,7 @@ typedef struct KualEntry {
     size_t order;
     bool exit_menu;
     bool checked_after;
+    bool checked;
     bool refresh_after;
     bool show_status;
     bool show_date;
