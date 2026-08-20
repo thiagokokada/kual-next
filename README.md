@@ -16,6 +16,22 @@ Non-JSON menus, KUAL's Java mailbox/cache protocol, the old self-management
 menu, TouchRunner output, and pre-hard-float firmware are intentionally out of
 scope.
 
+## Limitations compared with KUAL
+
+| Area | Limitation |
+| --- | --- |
+| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. The Home screen may repaint over it, and returning from applications such as KOReader or kTerm may expose a stale or blank screen. |
+| Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
+| Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
+| Command output | Actions run normally, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
+| Internal messages | Breadcrumb and status internal messages are currently both displayed in the bottom status area, rather than in separate areas as in KUAL. |
+| Input | Touch, Home/Menu, back, next, and a small set of page-key aliases are supported. KUAL's numeric/QWERTY item shortcuts and Java focus navigation are not. |
+| Configuration | Discovery depth, path exclusion, symlink following, collation, and `ABC`, `ABC!`, and `123` sorting are supported. UI settings such as `KUAL_no_show_status` and the self-management menu are not. |
+| Parsing | `config.xml` is handled by a small purpose-built parser. Normal extension configurations work, but complex XML features such as namespaces or custom entity declarations may not. |
+| Fonts | Bundled Noto fonts cover KUAL's standard indicators and many scripts and symbols, but there is no font fallback; unsupported characters may be rendered as squares. |
+| Devices | Only recent ARM hard-float Kindles running firmware 5.16.3 or newer are targeted. Older ARMEL and keyboard-era devices are unsupported. |
+| Menu size | Menus are limited to ten nesting levels and ten visible rows per page. |
+
 ## Native development and validation
 
 Enter the pinned Nix environment and run the host tests:
