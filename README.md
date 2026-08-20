@@ -4,9 +4,6 @@ KUAL Next is a native launcher for existing KUAL JSON extensions on jailbroken
 Kindles running hard-float firmware 5.16.3 or newer. It uses FBInk and Linux
 evdev directly; Java, Kindlets, and Booklets are not required.
 
-The interface uses bundled OFL-licensed Noto Sans and Noto Sans Symbols fonts.
-It does not load fonts or other resources from the Kindle's Java installation.
-
 ## Supported extension contract
 
 The launcher scans `/mnt/us/extensions` for `config.xml` files and their JSON
@@ -36,9 +33,9 @@ build/host/kual-next --validate --extensions /path/to/extensions --model KindleP
 
 ## Kindle cross-build
 
-The one-time toolchain bootstrap downloads and builds koxtoolchain's
-`kindlehf` target into `.toolchains/`. The Make target enters a lightweight
-FHS environment so upstream assumptions such as `/bin/pwd` work on NixOS:
+The one-time toolchain bootstrap downloads and builds
+[koxtoolchain's](https://github.com/koreader/koxtoolchain) `kindlehf` target
+into `.toolchains/`.
 
 ```sh
 nix develop
@@ -47,18 +44,8 @@ make check
 make package
 ```
 
-The FHS environment also pins Autoconf 2.69, which is required when
-koxtoolchain regenerates glibc 2.20's configure script. The bootstrap uses the
-pinned upstream sources unchanged; it only sets the generated crosstool-ng
-installation prefix so the result stays inside this project.
-
-FBInk is pinned as a recursive Git submodule. Clone with
-`git clone --recurse-submodules`, or initialize an existing checkout with
-`git submodule update --init --recursive`, before building.
-
-The package is written to `dist/kual-next-0.1.0-kindlehf.zip`. Extract it at
-the Kindle USB storage root so that `documents/KUAL Next.sh` and
-`kual-next/bin/kual-next` land under `/mnt/us`. SH Integration indexes the
-scriptlet as a library item and restores the stock interface when it exits.
+The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
+at the Kindle USB storage root so that `documents/KUAL Next.sh` and
+`kual-next/bin/kual-next` land under `/mnt/us`.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
