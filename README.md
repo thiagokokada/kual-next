@@ -32,6 +32,13 @@ scope.
 | Devices | Only recent ARM hard-float Kindles running firmware 5.16.3 or newer are targeted. Older ARMEL and keyboard-era devices are unsupported. |
 | Menu size | Menus are limited to ten nesting levels and ten visible rows per page. |
 
+## Tested extensions
+
+- https://github.com/Satsuoni/DeDRM_tools/
+- https://github.com/bfabiszewski/kterm
+- https://github.com/koreader/koreader
+- https://github.com/mitanshu7/tailscale_kual
+
 ## Native development and validation
 
 Enter the pinned Nix environment and run the host tests:
