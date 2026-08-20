@@ -77,6 +77,7 @@ package: check
 	cp assets/fonts/NotoSans.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSans.ttf"
 	cp assets/fonts/NotoSansSymbols.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSansSymbols.ttf"
 	cp assets/fonts/NotoSansSymbols2-Regular.otf "$(BUILD_DIR)/package/kual-next/fonts/NotoSansSymbols2-Regular.otf"
+	cp assets/icons/kual-next.png "$(BUILD_DIR)/package/kual-next/icon.png"
 	cp "$(FBINK_DIR)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
