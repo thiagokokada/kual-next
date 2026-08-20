@@ -52,9 +52,9 @@ koxtoolchain regenerates glibc 2.20's configure script. The bootstrap uses the
 pinned upstream sources unchanged; it only sets the generated crosstool-ng
 installation prefix so the result stays inside this project.
 
-FBInk is read from `../FBInk` by default. Set `FBINK_DIR=/path/to/FBInk` to use
-another checkout. The build stages the pinned FBInk commit under `build/` and
-does not modify the source checkout.
+FBInk is pinned as a recursive Git submodule. Clone with
+`git clone --recurse-submodules`, or initialize an existing checkout with
+`git submodule update --init --recursive`, before building.
 
 The package is written to `dist/kual-next-0.1.0-kindlehf.zip`. Extract it at
 the Kindle USB storage root so that `documents/KUAL Next.sh` and

@@ -11,10 +11,9 @@ CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
 HOST_SOURCES := $(CORE_SOURCES) src/main.c
 HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
 
-FBINK_DIR ?= ../FBInk
-FBINK_REV ?= 886f25f13368859ad8a899b88d04c26e19cda32e
-FBINK_STAGE := $(BUILD_DIR)/vendor/FBInk-src
-FBINK_FEATURE_STAMP := $(FBINK_STAGE)/.kual-opentype-build
+FBINK_DIR := $(CURDIR)/third_party/FBInk
+FBINK_LIB := $(FBINK_DIR)/Release/libfbink.a
+FBINK_FEATURE_STAMP := $(BUILD_DIR)/vendor/.fbink-opentype-build
 TC_ROOT ?= $(CURDIR)/.toolchains
 TOOLCHAIN_FHS ?= kual-toolchain-fhs
 TC_TRIPLE := arm-kindlehf-linux-gnueabihf
@@ -43,23 +42,21 @@ test: $(HOST_BINARY)
 toolchain:
 	KUAL_TC_ROOT="$(TC_ROOT)" $(TOOLCHAIN_FHS) -c 'exec sh ./scripts/bootstrap-toolchain.sh'
 
-$(FBINK_STAGE)/.staged: scripts/stage-fbink.sh
-	sh ./scripts/stage-fbink.sh "$(abspath $(FBINK_DIR))" "$(FBINK_REV)" "$(abspath $(FBINK_STAGE))"
-
-$(FBINK_FEATURE_STAMP): $(FBINK_STAGE)/.staged
-	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_STAGE)" cleanstaticlib
-	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_STAGE)" staticlib KINDLE=1 MINIMAL=1 BITMAP=1 DRAW=1 INPUT=1 OPENTYPE=1 CROSS_TC=$(TC_TRIPLE)
+$(FBINK_FEATURE_STAMP): $(FBINK_DIR)/Makefile $(FBINK_DIR)/fbink.h
+	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib
+	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" staticlib KINDLE=1 MINIMAL=1 BITMAP=1 DRAW=1 INPUT=1 OPENTYPE=1 CROSS_TC=$(TC_TRIPLE)
+	mkdir -p $(@D)
 	touch $@
 
-$(FBINK_STAGE)/Release/libfbink.a: $(FBINK_FEATURE_STAMP)
+$(FBINK_LIB): $(FBINK_FEATURE_STAMP)
 	test -f $@
 
-$(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h $(FBINK_STAGE)/.staged
+$(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h $(FBINK_FEATURE_STAMP)
 	mkdir -p $(@D)
-	$(DEVICE_CC) $(CPPFLAGS) -I$(FBINK_STAGE) $(DEVICE_CFLAGS) -c -o $@ $<
+	$(DEVICE_CC) $(CPPFLAGS) -I$(FBINK_DIR) $(DEVICE_CFLAGS) -c -o $@ $<
 
-$(DEVICE_BINARY): $(DEVICE_OBJECTS) $(FBINK_STAGE)/Release/libfbink.a
-	$(DEVICE_CC) $(DEVICE_CFLAGS) $(DEVICE_LDFLAGS) -o $@ $(DEVICE_OBJECTS) $(FBINK_STAGE)/Release/libfbink.a -lm
+$(DEVICE_BINARY): $(DEVICE_OBJECTS) $(FBINK_LIB)
+	$(DEVICE_CC) $(DEVICE_CFLAGS) $(DEVICE_LDFLAGS) -o $@ $(DEVICE_OBJECTS) $(FBINK_LIB) -lm
 	$(DEVICE_STRIP) --strip-all $@
 
 kindle: $(DEVICE_BINARY)
@@ -77,10 +74,11 @@ package: check
 	cp third_party/JSMN-LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/jsmn-MIT.txt"
 	cp assets/fonts/OFL.txt "$(BUILD_DIR)/package/kual-next/LICENSES/Noto-SIL-OFL-1.1.txt"
 	cp assets/fonts/NotoSans.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSans.ttf"
-	cp "$(FBINK_STAGE)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
+	cp "$(FBINK_DIR)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
 	cd "$(BUILD_DIR)/package" && find . -type f -print | LC_ALL=C sort | zip -X -q "$(CURDIR)/$(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip" -@
 
 clean:
+	@if [ -f "$(FBINK_DIR)/Makefile" ]; then PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib; fi
 	rm -rf "$(BUILD_DIR)" "$(DIST_DIR)"
