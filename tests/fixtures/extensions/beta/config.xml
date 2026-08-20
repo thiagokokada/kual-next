@@ -1,0 +1,4 @@
+<extension>
+  <information><name>Beta</name><id>beta</id></information>
+  <menus><menu type='json'>actions.json</menu></menus>
+</extension>

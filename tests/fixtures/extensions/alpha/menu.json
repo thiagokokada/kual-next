@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "name": "Alpha",
+      "priority": 10,
+      "items": [
+        {
+          "name": "Run Unicode \u2713",
+          "action": "bin/run.sh",
+          "params": "one two",
+          "exitmenu": false,
+          "checked": true,
+          "refresh": true
+        },
+        {
+          "name": "Model match",
+          "action": ":",
+          "if": "\"KindlePaperWhite5\" -m"
+        },
+        {
+          "name": "Model mismatch",
+          "action": ":",
+          "if": "\"KindleVoyage\" -m!"
+        },
+        {
+          "name": "Configured",
+          "action": ":",
+          "if": "\"sample_mode\" \"enabled\" -o"
+        },
+        {"name": "Invisible", "action": ":", "hidden": true}
+      ]
+    }
+  ]
+}
