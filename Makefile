@@ -14,6 +14,7 @@ HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
 FBINK_DIR ?= ../FBInk
 FBINK_REV ?= 886f25f13368859ad8a899b88d04c26e19cda32e
 FBINK_STAGE := $(BUILD_DIR)/vendor/FBInk-src
+FBINK_FEATURE_STAMP := $(FBINK_STAGE)/.kual-opentype-build
 TC_ROOT ?= $(CURDIR)/.toolchains
 TOOLCHAIN_FHS ?= kual-toolchain-fhs
 TC_TRIPLE := arm-kindlehf-linux-gnueabihf
@@ -45,8 +46,13 @@ toolchain:
 $(FBINK_STAGE)/.staged: scripts/stage-fbink.sh
 	sh ./scripts/stage-fbink.sh "$(abspath $(FBINK_DIR))" "$(FBINK_REV)" "$(abspath $(FBINK_STAGE))"
 
-$(FBINK_STAGE)/Release/libfbink.a: $(FBINK_STAGE)/.staged
-	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_STAGE)" staticlib KINDLE=1 MINIMAL=1 BITMAP=1 DRAW=1 INPUT=1 CROSS_TC=$(TC_TRIPLE)
+$(FBINK_FEATURE_STAMP): $(FBINK_STAGE)/.staged
+	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_STAGE)" cleanstaticlib
+	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_STAGE)" staticlib KINDLE=1 MINIMAL=1 BITMAP=1 DRAW=1 INPUT=1 OPENTYPE=1 CROSS_TC=$(TC_TRIPLE)
+	touch $@
+
+$(FBINK_STAGE)/Release/libfbink.a: $(FBINK_FEATURE_STAMP)
+	test -f $@
 
 $(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h $(FBINK_STAGE)/.staged
 	mkdir -p $(@D)
@@ -65,10 +71,12 @@ check: test $(DEVICE_BINARY)
 
 package: check
 	rm -rf "$(BUILD_DIR)/package"
-	mkdir -p "$(BUILD_DIR)/package/kual-next/bin" "$(BUILD_DIR)/package/kual-next/LICENSES" "$(BUILD_DIR)/package/documents" "$(DIST_DIR)"
+	mkdir -p "$(BUILD_DIR)/package/kual-next/bin" "$(BUILD_DIR)/package/kual-next/fonts" "$(BUILD_DIR)/package/kual-next/LICENSES" "$(BUILD_DIR)/package/documents" "$(DIST_DIR)"
 	cp $(DEVICE_BINARY) "$(BUILD_DIR)/package/kual-next/bin/kual-next"
 	cp LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/KUAL-Next-GPL-3.0-or-later.txt"
 	cp third_party/JSMN-LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/jsmn-MIT.txt"
+	cp assets/fonts/OFL.txt "$(BUILD_DIR)/package/kual-next/LICENSES/Noto-SIL-OFL-1.1.txt"
+	cp assets/fonts/NotoSans.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSans.ttf"
 	cp "$(FBINK_STAGE)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +

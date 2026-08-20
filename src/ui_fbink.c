@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/input.h>
+#include <math.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdint.h>
@@ -20,6 +21,7 @@
 
 #define MAX_INPUTS 16
 #define MAX_NAV_DEPTH (KUAL_MAX_DEPTH + 1)
+#define KUAL_PAGE_ROWS 10U
 
 typedef struct {
     int fd;
@@ -32,13 +34,16 @@ typedef struct {
 typedef struct {
     int fbfd;
     FBInkConfig draw_cfg;
+    FBInkOTConfig text_cfg;
+    bool opentype_ready;
     FBInkState state;
     InputDevice inputs[MAX_INPUTS];
     size_t input_count;
     KualEntry *nav[MAX_NAV_DEPTH];
     size_t depth;
     size_t page;
-    unsigned int header_h, footer_h, row_h, page_size;
+    unsigned int top_h, status_h, side_w, gap;
+    unsigned int list_y, list_h, button_x, button_w, button_h;
     char status[256];
 } UI;
 
@@ -76,6 +81,10 @@ static void ui_cleanup(UI *ui) {
         int release = 0; ioctl(ui->inputs[i].fd, EVIOCGRAB, release); close(ui->inputs[i].fd);
     }
     ui->input_count = 0;
+    if (ui->opentype_ready) {
+        (void)fbink_free_ot_fonts_v2(&ui->text_cfg);
+        ui->opentype_ready = false;
+    }
     if (ui->fbfd >= 0) { fbink_close(ui->fbfd); ui->fbfd = -1; }
 }
 
@@ -115,13 +124,20 @@ static int ui_init(UI *ui) {
     ui->fbfd = fbink_open(); if (ui->fbfd < 0) return -1;
     if (fbink_init(ui->fbfd, &ui->draw_cfg) != 0) return -1;
     fbink_get_state(&ui->draw_cfg, &ui->state);
-    unsigned int font_h = ui->state.font_h ? ui->state.font_h : 48;
-    ui->header_h = font_h * 2; ui->footer_h = font_h * 2;
-    unsigned int touch_h = (unsigned int)ui->state.screen_dpi * 8U / 25U;
-    ui->row_h = font_h * 2 > touch_h ? font_h * 2 : touch_h;
-    unsigned int available = ui->state.view_height > ui->header_h + ui->footer_h ?
-        ui->state.view_height - ui->header_h - ui->footer_h : ui->row_h;
-    ui->page_size = available / ui->row_h; if (!ui->page_size) ui->page_size = 1;
+    const char *font = "/mnt/us/kual-next/fonts/NotoSans.ttf";
+    if (access(font, R_OK) == 0 &&
+        fbink_add_ot_font_v2(font, FNT_REGULAR, &ui->text_cfg) == 0)
+        ui->opentype_ready = true;
+    unsigned int width = ui->state.view_width, height = ui->state.view_height;
+    ui->gap = width / 190U; if (ui->gap < 4U) ui->gap = 4U;
+    ui->top_h = height / 25U; if (ui->top_h < 28U) ui->top_h = 28U;
+    ui->status_h = height / 25U; if (ui->status_h < 28U) ui->status_h = 28U;
+    ui->list_y = ui->top_h;
+    ui->list_h = height - ui->top_h - ui->status_h;
+    ui->side_w = width * 13U / 100U;
+    ui->button_x = ui->gap / 2U + ui->side_w + ui->gap;
+    ui->button_w = width - 2U * ui->button_x;
+    ui->button_h = (ui->list_h - (KUAL_PAGE_ROWS - 1U) * ui->gap) / KUAL_PAGE_ROWS;
     if (ui_inputs_open(ui) != 0) return -1;
     return 0;
 }
@@ -150,38 +166,158 @@ static void print_at(UI *ui, int x, int y, const char *text, bool centered) {
 
 static KualEntry *current_menu(UI *ui) { return ui->nav[ui->depth]; }
 
+static void print_area(UI *ui, const char *text, unsigned int x, unsigned int y,
+                       unsigned int width, unsigned int height, unsigned int size,
+                       bool centered) {
+    if (ui->opentype_ready) {
+        FBInkOTConfig cfg = ui->text_cfg;
+        cfg.margins.left = (short)x;
+        cfg.margins.right = (short)(ui->state.view_width - x - width);
+        cfg.margins.top = (short)y;
+        cfg.margins.bottom = (short)(ui->state.view_height - y - height);
+        cfg.size_px = (unsigned short)size;
+        cfg.is_centered = centered;
+        FBInkConfig draw = ui->draw_cfg;
+        draw.halign = centered ? CENTER : NONE;
+        draw.valign = CENTER;
+        draw.is_centered = centered;
+        draw.is_bgless = true;
+        (void)fbink_print_ot(ui->fbfd, text, &cfg, &draw, NULL);
+        return;
+    }
+    size_t columns = ui->state.font_w ? width / ui->state.font_w : 20U;
+    char *fallback = display_text(text, columns ? columns : 1U);
+    print_at(ui, centered ? (int)(x + width / 2U) : (int)x,
+             (int)(y + (height > ui->state.font_h ? (height - ui->state.font_h) / 2U : 0U)),
+             fallback, centered);
+    free(fallback);
+}
+
+static void line_gray(UI *ui, unsigned int x, unsigned int y,
+                      unsigned int width, unsigned int height, uint8_t gray) {
+    if (!width || !height) return;
+    FBInkRect rect = {(unsigned short)x, (unsigned short)y,
+                      (unsigned short)width, (unsigned short)height};
+    (void)fbink_fill_rect_gray(ui->fbfd, &ui->draw_cfg, &rect, false, gray);
+}
+
+static void rounded_outline(UI *ui, unsigned int x, unsigned int y,
+                            unsigned int width, unsigned int height,
+                            unsigned int radius, unsigned int thickness,
+                            uint8_t gray) {
+    if (width < 2U || height < 2U) return;
+    if (radius * 2U >= width) radius = width / 2U - 1U;
+    if (radius * 2U >= height) radius = height / 2U - 1U;
+    for (unsigned int inset = 0; inset < thickness; inset++) {
+        unsigned int xi = x + inset, yi = y + inset;
+        unsigned int wi = width - inset * 2U, hi = height - inset * 2U;
+        unsigned int ri = radius > inset ? radius - inset : 1U;
+        line_gray(ui, xi + ri, yi, wi - 2U * ri, 1U, gray);
+        line_gray(ui, xi + ri, yi + hi - 1U, wi - 2U * ri, 1U, gray);
+        line_gray(ui, xi, yi + ri, 1U, hi - 2U * ri, gray);
+        line_gray(ui, xi + wi - 1U, yi + ri, 1U, hi - 2U * ri, gray);
+        int cx1 = (int)(xi + ri), cx2 = (int)(xi + wi - ri - 1U);
+        int cy1 = (int)(yi + ri), cy2 = (int)(yi + hi - ri - 1U);
+        int px = (int)ri, py = 0, decision = 1 - (int)ri;
+        while (px >= py) {
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx1 - px), (uint16_t)(cy1 - py), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx1 - py), (uint16_t)(cy1 - px), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx2 + px), (uint16_t)(cy1 - py), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx2 + py), (uint16_t)(cy1 - px), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx1 - px), (uint16_t)(cy2 + py), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx1 - py), (uint16_t)(cy2 + px), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx2 + px), (uint16_t)(cy2 + py), gray);
+            (void)fbink_put_pixel_gray(ui->fbfd, (uint16_t)(cx2 + py), (uint16_t)(cy2 + px), gray);
+            py++;
+            if (decision < 0) decision += 2 * py + 1;
+            else { px--; decision += 2 * (py - px) + 1; }
+        }
+    }
+}
+
+static void draw_triangle(UI *ui, unsigned int center_x, unsigned int center_y,
+                          bool points_right, uint8_t gray) {
+    unsigned int half = ui->side_w / 11U; if (half < 8U) half = 8U;
+    for (unsigned int offset = 0; offset <= half; offset++) {
+        unsigned int span = half - offset;
+        unsigned int x = points_right ? center_x - half / 2U + offset : center_x + half / 2U - offset;
+        line_gray(ui, x, center_y - span, 1U, span * 2U + 1U, gray);
+    }
+}
+
+static void breadcrumb(UI *ui, char *buffer, size_t size) {
+    snprintf(buffer, size, "$ • /");
+    for (size_t i = 1; i <= ui->depth; i++) {
+        size_t used = strlen(buffer);
+        if (used + 5U >= size) break;
+        snprintf(buffer + used, size - used, " • %s", ui->nav[i]->name);
+    }
+}
+
 static void ui_draw(UI *ui) {
     FBInkConfig clear = ui->draw_cfg; clear.bg_color = BG_WHITE; clear.is_bgless = false;
     clear.wfm_mode = WFM_GC16; clear.no_refresh = true;
     (void)fbink_cls(ui->fbfd, &clear, NULL, false);
     KualEntry *menu = current_menu(ui);
-    char header[512];
-    snprintf(header, sizeof(header), "%s  %s", ui->depth ? "< Back" : "X Close", menu->name);
-    char *header_display = display_text(header, ui->state.max_cols > 2 ? ui->state.max_cols - 2 : 20);
-    print_at(ui, (int)ui->state.font_w, 0, header_display, false); free(header_display);
-    size_t first = ui->page * ui->page_size;
-    for (size_t row = 0; row < ui->page_size && first + row < menu->child_count; row++) {
-        KualEntry *entry = &menu->children[first + row];
-        size_t max = ui->state.max_cols > 5 ? ui->state.max_cols - 5 : 20;
-        char *name = display_text(entry->name, max);
-        size_t n = strlen(name) + 5; char *line = kual_xcalloc(n, 1);
-        snprintf(line, n, "%s%s", entry->child_count ? "> " : "  ", name);
-        print_at(ui, (int)ui->state.font_w,
-            (int)(ui->header_h + row * ui->row_h + (ui->row_h - ui->state.font_h) / 2), line, false);
-        free(line); free(name);
+    unsigned int outer_x = ui->gap / 2U;
+    unsigned int right_x = ui->state.view_width - outer_x - ui->side_w;
+    unsigned int radius = ui->state.view_width / 85U; if (radius < 8U) radius = 8U;
+    rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U, 170U);
+    rounded_outline(ui, right_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U, 170U);
+
+    char trail[768]; breadcrumb(ui, trail, sizeof(trail));
+    print_area(ui, trail, outer_x, 0U, ui->state.view_width - 2U * outer_x,
+               ui->top_h, ui->state.view_width / 43U, false);
+
+    size_t total = menu->child_count + 1U;
+    size_t first = ui->page * KUAL_PAGE_ROWS;
+    size_t pages = (total + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
+    bool final_page = ui->page + 1U == pages;
+    for (size_t row = 0; row < KUAL_PAGE_ROWS; row++) {
+        size_t index = first + row;
+        bool special = final_page && row == KUAL_PAGE_ROWS - 1U;
+        if (index >= menu->child_count && !special) continue;
+        unsigned int y = ui->list_y + (unsigned int)row * (ui->button_h + ui->gap);
+        rounded_outline(ui, ui->button_x, y, ui->button_w, ui->button_h,
+                        radius, 1U, 55U);
+        const char *label;
+        char entry_label[768];
+        if (special) label = ui->depth ? "/" : "× Quit";
+        else {
+            KualEntry *entry = &menu->children[index];
+            snprintf(entry_label, sizeof(entry_label), "%s%s", entry->name,
+                     entry->child_count ? " ▽" : "");
+            label = entry_label;
+        }
+        print_area(ui, label, ui->button_x + ui->gap, y,
+                   ui->button_w - 2U * ui->gap, ui->button_h,
+                   ui->state.view_width / 30U, true);
     }
-    size_t pages = (menu->child_count + ui->page_size - 1) / ui->page_size; if (!pages) pages = 1;
+
+    draw_triangle(ui, outer_x + ui->side_w / 2U,
+                  ui->list_y + ui->list_h / 2U, false,
+                  ui->depth ? 80U : 165U);
+    draw_triangle(ui, right_x + ui->side_w / 2U,
+                  ui->list_y + ui->list_h / 2U, true,
+                  pages > 1U ? 80U : 165U);
+
     char footer[512];
     if (*ui->status) snprintf(footer, sizeof(footer), "%s", ui->status);
-    else snprintf(footer, sizeof(footer), "Prev       %zu/%zu       Next", ui->page + 1, pages);
-    char *footer_display = display_text(footer, ui->state.max_cols > 2 ? ui->state.max_cols - 2 : 20);
-    print_at(ui, 0, (int)(ui->state.view_height - ui->footer_h), footer_display, true); free(footer_display);
+    else {
+        size_t end = first + KUAL_PAGE_ROWS; if (end > total) end = total;
+        snprintf(footer, sizeof(footer), "Entries %zu - %zu of %zu • KUAL Next %s • %s",
+                 first + 1U, end, total, KUAL_NEXT_VERSION, ui->state.device_name);
+    }
+    print_area(ui, footer, outer_x, ui->state.view_height - ui->status_h,
+               ui->state.view_width - 2U * outer_x, ui->status_h,
+               ui->state.view_width / 45U, false);
     FBInkConfig refresh = ui->draw_cfg; refresh.no_refresh = false; refresh.wfm_mode = WFM_GC16;
     (void)fbink_refresh(ui->fbfd, 0, 0, 0, 0, &refresh);
 }
 
 static void tap_feedback(UI *ui, unsigned int y) {
-    FBInkRect rect = {0, (unsigned short)y, (unsigned short)ui->state.view_width, (unsigned short)ui->row_h};
+    FBInkRect rect = {(unsigned short)ui->button_x, (unsigned short)y,
+                      (unsigned short)ui->button_w, (unsigned short)ui->button_h};
     (void)fbink_invert_rect(ui->fbfd, &rect, false);
     FBInkConfig cfg = ui->draw_cfg; cfg.wfm_mode = WFM_DU; cfg.no_refresh = false;
     (void)fbink_refresh_rect(ui->fbfd, &rect, &cfg);
@@ -209,19 +345,27 @@ static void transform_touch(UI *ui, InputDevice *input, int raw_x, int raw_y, in
     *x = (int)(tx * (ui->state.view_width - 1)); *y = (int)(ty * (ui->state.view_height - 1));
 }
 
-enum tap_action { TAP_NONE, TAP_CLOSE, TAP_BACK, TAP_PREV, TAP_NEXT, TAP_ENTRY };
+enum tap_action { TAP_NONE, TAP_CLOSE, TAP_BACK, TAP_TOP, TAP_NEXT, TAP_ENTRY };
 typedef struct { enum tap_action action; KualEntry *entry; } TapResult;
 
 static TapResult map_tap(UI *ui, int x, int y) {
-    (void)x; KualEntry *menu = current_menu(ui);
-    if (y < (int)ui->header_h) return (TapResult){ui->depth ? TAP_BACK : TAP_CLOSE, NULL};
-    if (y >= (int)(ui->state.view_height - ui->footer_h)) {
-        return (TapResult){x < (int)ui->state.view_width / 2 ? TAP_PREV : TAP_NEXT, NULL};
-    }
-    size_t row = (size_t)(y - (int)ui->header_h) / ui->row_h;
-    size_t index = ui->page * ui->page_size + row;
-    if (row < ui->page_size && index < menu->child_count)
+    KualEntry *menu = current_menu(ui);
+    if (y < (int)ui->list_y || y >= (int)(ui->list_y + ui->list_h))
+        return (TapResult){TAP_NONE, NULL};
+    if (x < (int)ui->button_x)
+        return (TapResult){ui->depth ? TAP_BACK : TAP_NONE, NULL};
+    if (x >= (int)(ui->button_x + ui->button_w))
+        return (TapResult){TAP_NEXT, NULL};
+    size_t row = (size_t)(y - (int)ui->list_y) / (ui->button_h + ui->gap);
+    unsigned int row_y = ui->list_y + (unsigned int)row * (ui->button_h + ui->gap);
+    if (row >= KUAL_PAGE_ROWS || y >= (int)(row_y + ui->button_h))
+        return (TapResult){TAP_NONE, NULL};
+    size_t index = ui->page * KUAL_PAGE_ROWS + row;
+    if (index < menu->child_count)
         return (TapResult){TAP_ENTRY, &menu->children[index]};
+    size_t pages = (menu->child_count + 1U + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
+    if (ui->page + 1U == pages && row == KUAL_PAGE_ROWS - 1U)
+        return (TapResult){ui->depth ? TAP_TOP : TAP_CLOSE, NULL};
     return (TapResult){TAP_NONE, NULL};
 }
 
@@ -284,11 +428,12 @@ static void reload_menu(UI *ui, KualMenu *menu, KualErrors *errors) {
 
 static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors, TapResult tap) {
     KualEntry *current = current_menu(ui);
-    size_t pages = (current->child_count + ui->page_size - 1) / ui->page_size; if (!pages) pages = 1;
+    size_t pages = (current->child_count + 1U + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
+    if (!pages) pages = 1;
     if (tap.action == TAP_CLOSE) return 1;
     if (tap.action == TAP_BACK) { if (ui->depth) ui->depth--; ui->page = 0; *ui->status = '\0'; }
-    else if (tap.action == TAP_PREV) { if (ui->page) ui->page--; }
-    else if (tap.action == TAP_NEXT) { if (ui->page + 1 < pages) ui->page++; }
+    else if (tap.action == TAP_TOP) { ui->depth = ui->page = 0; *ui->status = '\0'; }
+    else if (tap.action == TAP_NEXT) { ui->page = (ui->page + 1U) % pages; }
     else if (tap.action == TAP_ENTRY && tap.entry) {
         if (tap.entry->child_count) {
             if (ui->depth + 1 < MAX_NAV_DEPTH) ui->nav[++ui->depth] = tap.entry;
@@ -315,7 +460,7 @@ static TapResult process_input(UI *ui, InputDevice *input) {
             struct input_event *ev = &events[i];
             if (ev->type == EV_KEY && ev->value == 0) {
                 if (ev->code == KEY_HOME || ev->code == KEY_MENU) result.action = TAP_CLOSE;
-                else if (ev->code == KEY_PAGEUP || ev->code == KEY_F23) result.action = TAP_PREV;
+                else if (ev->code == KEY_PAGEUP || ev->code == KEY_F23) result.action = TAP_BACK;
                 else if (ev->code == KEY_PAGEDOWN || ev->code == KEY_YEN) result.action = TAP_NEXT;
                 else if (ev->code == BTN_TOUCH) { input->down = false; input->release_pending = true; }
             } else if (ev->type == EV_KEY && ev->code == BTN_TOUCH && ev->value > 0) input->down = true;
@@ -337,8 +482,13 @@ static TapResult process_input(UI *ui, InputDevice *input) {
                     int threshold = (int)ui->state.screen_dpi / 12;
                     if (dx * dx + dy * dy <= threshold * threshold) {
                         result = map_tap(ui, x, y);
-                        if (result.action == TAP_ENTRY) tap_feedback(ui, ui->header_h +
-                            ((unsigned int)(y - (int)ui->header_h) / ui->row_h) * ui->row_h);
+                        if (x >= (int)ui->button_x && x < (int)(ui->button_x + ui->button_w) &&
+                            y >= (int)ui->list_y && y < (int)(ui->list_y + ui->list_h) &&
+                            result.action != TAP_NONE) {
+                            unsigned int row = (unsigned int)(y - (int)ui->list_y) /
+                                               (ui->button_h + ui->gap);
+                            tap_feedback(ui, ui->list_y + row * (ui->button_h + ui->gap));
+                        }
                     }
                 }
             }

@@ -4,6 +4,9 @@ KUAL Next is a native launcher for existing KUAL JSON extensions on jailbroken
 Kindles running hard-float firmware 5.16.3 or newer. It uses FBInk and Linux
 evdev directly; Java, Kindlets, and Booklets are not required.
 
+The interface uses the bundled OFL-licensed Noto Sans font. It does not load
+fonts or other resources from the Kindle's Java installation.
+
 ## Supported extension contract
 
 The launcher scans `/mnt/us/extensions` for `config.xml` files and their JSON
