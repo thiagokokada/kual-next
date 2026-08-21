@@ -49,6 +49,8 @@ typedef struct {
   char power_buffer[512];
   size_t power_buffer_len;
   bool screen_saver_active;
+  bool resume_redraw_pending;
+  struct timespec resume_redraw_at;
   KualEntry *nav[MAX_NAV_DEPTH];
   size_t depth;
   size_t page;
@@ -92,11 +94,47 @@ static int service_command(const char *path) {
   return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
+static bool statusbar_is_running(void) {
+  int pipefd[2];
+  if (pipe(pipefd) != 0)
+    return false;
+  pid_t pid = fork();
+  if (pid == 0) {
+    close(pipefd[0]);
+    dup2(pipefd[1], STDOUT_FILENO);
+    int nullfd = open("/dev/null", O_WRONLY);
+    if (nullfd >= 0) {
+      dup2(nullfd, STDERR_FILENO);
+      if (nullfd > STDERR_FILENO && nullfd != pipefd[1])
+        close(nullfd);
+    }
+    if (pipefd[1] != STDOUT_FILENO)
+      close(pipefd[1]);
+    execl("/sbin/status", "/sbin/status", "statusbar", (char *)NULL);
+    _exit(127);
+  }
+  close(pipefd[1]);
+  if (pid < 0) {
+    close(pipefd[0]);
+    return false;
+  }
+  char output[128];
+  size_t used = 0;
+  ssize_t got;
+  while (used + 1U < sizeof(output) &&
+         (got = read(pipefd[0], output + used, sizeof(output) - used - 1U)) > 0)
+    used += (size_t)got;
+  close(pipefd[0]);
+  while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {
+  }
+  output[used] = '\0';
+  return strstr(output, "start/running") != NULL;
+}
+
 static void statusbar_restore_if_owned(void) {
   if (!statusbar_owned())
     return;
-  if (service_command("/sbin/status") != 0 &&
-      service_command("/sbin/start") != 0)
+  if (!statusbar_is_running() && service_command("/sbin/start") != 0)
     kual_log("failed to restore Kindle statusbar before action");
   unsetenv("KUAL_NEXT_STATUSBAR_STOPPED");
 }
@@ -104,8 +142,7 @@ static void statusbar_restore_if_owned(void) {
 static void statusbar_hide_if_owned(void) {
   if (!statusbar_owned())
     return;
-  if (service_command("/sbin/status") == 0 &&
-      service_command("/sbin/stop") != 0)
+  if (statusbar_is_running() && service_command("/sbin/stop") != 0)
     kual_log("failed to stop Kindle statusbar after resume");
 }
 
@@ -222,13 +259,17 @@ static int ui_inputs_open(UI *ui) {
   return ui->input_count ? 0 : -1;
 }
 
-static void ui_inputs_grab(UI *ui, bool grab) {
+static bool ui_inputs_grab(UI *ui, bool grab) {
   int value = grab ? 1 : 0;
+  bool success = true;
   for (size_t i = 0; i < ui->input_count; i++) {
-    if (ioctl(ui->inputs[i].fd, EVIOCGRAB, value) != 0)
+    if (ioctl(ui->inputs[i].fd, EVIOCGRAB, value) != 0) {
+      success = false;
       kual_log("cannot %s input fd %d: %s", grab ? "grab" : "release",
                ui->inputs[i].fd, strerror(errno));
+    }
   }
+  return success;
 }
 
 static void input_discard(InputDevice *input) {
@@ -651,18 +692,49 @@ static void ui_draw(UI *ui) {
   (void)fbink_refresh(ui->fbfd, 0, 0, 0, 0, &refresh);
 }
 
-static void ui_resume_from_screen_saver(UI *ui) {
+static void ui_redraw_after_resume(UI *ui) {
   statusbar_hide_if_owned();
   int result = fbink_reinit(ui->fbfd, &ui->draw_cfg);
   if (result < 0)
     kual_log("FBInk reinit after unlock failed: %d", result);
   fbink_get_state(&ui->draw_cfg, &ui->state);
   ui_layout(ui);
+  ui_draw(ui);
+}
+
+static void schedule_resume_redraw(UI *ui, long delay_ms) {
+  clock_gettime(CLOCK_MONOTONIC, &ui->resume_redraw_at);
+  ui->resume_redraw_at.tv_sec += delay_ms / 1000L;
+  ui->resume_redraw_at.tv_nsec += (delay_ms % 1000L) * 1000000L;
+  if (ui->resume_redraw_at.tv_nsec >= 1000000000L) {
+    ui->resume_redraw_at.tv_sec++;
+    ui->resume_redraw_at.tv_nsec -= 1000000000L;
+  }
+  ui->resume_redraw_pending = true;
+}
+
+static int resume_redraw_timeout(const UI *ui) {
+  if (!ui->resume_redraw_pending)
+    return -1;
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  long seconds = ui->resume_redraw_at.tv_sec - now.tv_sec;
+  long nanoseconds = ui->resume_redraw_at.tv_nsec - now.tv_nsec;
+  long milliseconds = seconds * 1000L + nanoseconds / 1000000L;
+  if (nanoseconds > 0 && nanoseconds % 1000000L)
+    milliseconds++;
+  return milliseconds > 0 ? (int)milliseconds : 0;
+}
+
+static void finish_resume_redraw(UI *ui) {
+  ui->resume_redraw_pending = false;
+  ui_redraw_after_resume(ui);
   for (size_t i = 0; i < ui->input_count; i++)
     input_discard(&ui->inputs[i]);
-  ui_inputs_grab(ui, true);
-  ui->screen_saver_active = false;
-  ui_draw(ui);
+  if (ui_inputs_grab(ui, true))
+    ui->screen_saver_active = false;
+  else
+    schedule_resume_redraw(ui, 1000L);
 }
 
 static void handle_power_event(UI *ui, const char *line) {
@@ -670,10 +742,12 @@ static void handle_power_event(UI *ui, const char *line) {
     if (!ui->screen_saver_active)
       ui_inputs_grab(ui, false);
     ui->screen_saver_active = true;
+    ui->resume_redraw_pending = false;
   } else if (!strncmp(line, "outOfScreenSaver", 16)) {
     ui->screen_saver_active = true;
   } else if (!strncmp(line, "exitingScreenSaver", 18)) {
-    ui_resume_from_screen_saver(ui);
+    ui_redraw_after_resume(ui);
+    schedule_resume_redraw(ui, 3000L);
   }
 }
 
@@ -1016,7 +1090,8 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
       fds[0] = (struct pollfd){ui.power_fd, POLLIN, 0};
     for (size_t i = 0; i < ui.input_count; i++)
       fds[input_offset + i] = (struct pollfd){ui.inputs[i].fd, POLLIN, 0};
-    int ready = poll(fds, input_offset + ui.input_count, -1);
+    int ready =
+        poll(fds, input_offset + ui.input_count, resume_redraw_timeout(&ui));
     if (ready < 0) {
       if (errno == EINTR)
         continue;
@@ -1041,6 +1116,8 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
             return result - 2;
         }
       }
+    if (ui.resume_redraw_pending && resume_redraw_timeout(&ui) == 0)
+      finish_resume_redraw(&ui);
   }
   ui_cleanup(&ui);
   return 0;
