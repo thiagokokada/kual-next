@@ -55,6 +55,7 @@ typedef struct {
   size_t depth;
   size_t page;
   unsigned int top_h, status_h, side_w, gap;
+  unsigned int chrome_text_size;
   unsigned int list_y, list_h, button_x, button_w, button_h;
   char status[256];
   char breadcrumb_status[256];
@@ -352,6 +353,12 @@ static void ui_layout(UI *ui) {
   ui->status_h = height / 25U;
   if (ui->status_h < 28U)
     ui->status_h = 28U;
+  ui->chrome_text_size = width / 36U;
+  unsigned int chrome_max_h =
+      ui->top_h < ui->status_h ? ui->top_h : ui->status_h;
+  chrome_max_h = chrome_max_h * 3U / 4U;
+  if (ui->chrome_text_size > chrome_max_h)
+    ui->chrome_text_size = chrome_max_h;
   ui->list_y = ui->top_h;
   ui->list_h = height - ui->top_h - ui->status_h;
   ui->side_w = width * 13U / 100U;
@@ -653,7 +660,7 @@ static void ui_draw(UI *ui) {
   char trail[768];
   breadcrumb(ui, trail, sizeof(trail));
   print_area(ui, trail, outer_x, 0U, ui->state.view_width - 2U * outer_x,
-             ui->top_h, ui->state.view_width / 43U, false);
+             ui->top_h, ui->chrome_text_size, false);
 
   size_t total = menu->child_count + 1U;
   size_t first = ui->page * KUAL_PAGE_ROWS;
@@ -698,7 +705,7 @@ static void ui_draw(UI *ui) {
   }
   print_area(ui, footer, outer_x, ui->state.view_height - ui->status_h,
              ui->state.view_width - 2U * outer_x, ui->status_h,
-             ui->state.view_width / 45U, false);
+             ui->chrome_text_size, false);
   FBInkConfig refresh = ui->draw_cfg;
   refresh.no_refresh = false;
   refresh.wfm_mode = WFM_GC16;
