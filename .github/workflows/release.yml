@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing stable release tag, such as v0.2.0
+        description: Stable release tag, such as v0.2.0; created if missing
         required: true
         type: string
 
@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 20
     outputs:
       version: ${{ steps.validate.outputs.version }}
+      release_commit: ${{ steps.validate.outputs.release_commit }}
+      tag_exists: ${{ steps.validate.outputs.tag_exists }}
     steps:
       - name: Check out release definitions
         uses: actions/checkout@v6
@@ -40,11 +42,23 @@ jobs:
             echo "A GitHub Release already exists for $RELEASE_TAG." >&2
             exit 1
           fi
-          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
-      - name: Check out tagged source
+          if git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" \
+            >/dev/null 2>&1; then
+            tag_exists=true
+            release_commit=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
+          else
+            tag_exists=false
+            release_commit=$(git rev-parse "origin/main^{commit}")
+          fi
+          {
+            printf 'version=%s\n' "$version"
+            printf 'release_commit=%s\n' "$release_commit"
+            printf 'tag_exists=%s\n' "$tag_exists"
+          } >>"$GITHUB_OUTPUT"
+      - name: Check out release source
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ steps.validate.outputs.release_commit }}
           fetch-depth: 0
           persist-credentials: false
           submodules: recursive
@@ -85,6 +99,16 @@ jobs:
         with:
           name: release-${{ inputs.tag }}
           path: release-assets
+      - name: Create missing release tag
+        if: needs.build.outputs.tag_exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.build.outputs.release_commit }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$RELEASE_TAG" \
+            -f sha="$RELEASE_COMMIT"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

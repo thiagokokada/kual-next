@@ -13,25 +13,26 @@ if ! printf '%s\n' "$tag" |
 fi
 
 tag_ref="refs/tags/$tag"
-if ! git -C "$root" rev-parse --verify "$tag_ref^{commit}" >/dev/null 2>&1; then
-	printf 'Release tag does not exist: %s\n' "$tag" >&2
-	exit 1
-fi
-
 if ! git -C "$root" rev-parse --verify "$main_ref^{commit}" >/dev/null 2>&1; then
 	printf 'Main reference does not exist: %s\n' "$main_ref" >&2
 	exit 1
 fi
 
-version=$(git -C "$root" show "$tag_ref:VERSION")
+release_ref="$tag_ref"
+if ! git -C "$root" rev-parse --verify "$tag_ref^{commit}" >/dev/null 2>&1; then
+	release_ref="$main_ref"
+fi
+
+version=$(git -C "$root" show "$release_ref:VERSION")
 if [ "$tag" != "v$version" ]; then
-	printf 'Release tag %s does not match VERSION %s at that tag.\n' \
-		"$tag" "$version" >&2
+	printf 'Release tag %s does not match VERSION %s at %s.\n' \
+		"$tag" "$version" "$release_ref" >&2
 	exit 1
 fi
 
-if ! git -C "$root" merge-base --is-ancestor "$tag_ref^{commit}" \
-    "$main_ref^{commit}"; then
+if [ "$release_ref" = "$tag_ref" ] &&
+    ! git -C "$root" merge-base --is-ancestor "$tag_ref^{commit}" \
+        "$main_ref^{commit}"; then
 	printf 'Release tag is not contained in %s: %s\n' "$main_ref" "$tag" >&2
 	exit 1
 fi

@@ -118,6 +118,7 @@ structural, behavior, and visual fixes, create separate verified commits for
 each concern. Preserve existing user changes and never rewrite or reset history
 unless explicitly requested.
 
-For a release, update `VERSION`, merge it to `main`, create and push the matching
-stable `vMAJOR.MINOR.PATCH` tag, then manually run the GitHub `Release` workflow
-with that existing tag. The workflow must not create or move release tags.
+For a release, update `VERSION`, merge it to `main`, then manually run the
+GitHub `Release` workflow with the matching stable `vMAJOR.MINOR.PATCH` tag. The
+workflow creates the tag at the successfully built `main` commit when it is
+missing, and must never move an existing tag.
