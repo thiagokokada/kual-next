@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -43,6 +44,11 @@ typedef struct {
     FBInkState state;
     InputDevice inputs[MAX_INPUTS];
     size_t input_count;
+    int power_fd;
+    pid_t power_pid;
+    char power_buffer[512];
+    size_t power_buffer_len;
+    bool screen_saver_active;
     KualEntry *nav[MAX_NAV_DEPTH];
     size_t depth;
     size_t page;
@@ -53,6 +59,8 @@ typedef struct {
 
 static volatile sig_atomic_t stopping;
 static void stop_handler(int sig) { (void)sig; stopping = 1; }
+
+static void power_events_close(UI *ui);
 
 static bool statusbar_owned(void) {
     const char *value = getenv("KUAL_NEXT_STATUSBAR_STOPPED");
@@ -83,6 +91,12 @@ static void statusbar_restore_if_owned(void) {
     unsetenv("KUAL_NEXT_STATUSBAR_STOPPED");
 }
 
+static void statusbar_hide_if_owned(void) {
+    if (!statusbar_owned()) return;
+    if (service_command("/sbin/status") == 0 && service_command("/sbin/stop") != 0)
+		kual_log("failed to stop Kindle statusbar after resume");
+}
+
 const char *kual_model_from_fbink_name(const char *name) {
     static const struct { const char *fbink, *kual; } models[] = {
         {"PaperWhite 6", "KindlePaperWhite6"}, {"PaperWhite 5", "KindlePaperWhite5"},
@@ -110,6 +124,7 @@ char *kual_device_model_probe(void) {
 }
 
 static void ui_cleanup(UI *ui) {
+    power_events_close(ui);
     for (size_t i = 0; i < ui->input_count; i++) {
         int release = 0; ioctl(ui->inputs[i].fd, EVIOCGRAB, release); close(ui->inputs[i].fd);
     }
@@ -157,8 +172,82 @@ static int ui_inputs_open(UI *ui) {
     return ui->input_count ? 0 : -1;
 }
 
+static void ui_inputs_grab(UI *ui, bool grab) {
+    int value = grab ? 1 : 0;
+    for (size_t i = 0; i < ui->input_count; i++) {
+		if (ioctl(ui->inputs[i].fd, EVIOCGRAB, value) != 0)
+			kual_log("cannot %s input fd %d: %s", grab ? "grab" : "release",
+				ui->inputs[i].fd, strerror(errno));
+    }
+}
+
+static void input_discard(InputDevice *input) {
+    struct input_event events[32];
+    while (read(input->fd, events, sizeof(events)) > 0) {}
+    input->down = input->reported_down = input->release_pending = false;
+}
+
+static int power_events_open(UI *ui) {
+    int pipefd[2];
+    if (pipe(pipefd) != 0) return -1;
+    for (size_t i = 0; i < 2; i++) {
+		int flags = fcntl(pipefd[i], F_GETFL);
+		if (flags >= 0) fcntl(pipefd[i], F_SETFL, flags | O_NONBLOCK);
+		flags = fcntl(pipefd[i], F_GETFD);
+		if (flags >= 0) fcntl(pipefd[i], F_SETFD, flags | FD_CLOEXEC);
+    }
+    pid_t pid = fork();
+    if (pid == 0) {
+		close(pipefd[0]);
+		if (ui->fbfd >= 0) close(ui->fbfd);
+		for (size_t i = 0; i < ui->input_count; i++) close(ui->inputs[i].fd);
+		prctl(PR_SET_PDEATHSIG, SIGTERM);
+		if (getppid() == 1) _exit(1);
+		dup2(pipefd[1], STDOUT_FILENO);
+		int nullfd = open("/dev/null", O_WRONLY);
+		if (nullfd >= 0) {
+			dup2(nullfd, STDERR_FILENO);
+			if (nullfd > STDERR_FILENO && nullfd != pipefd[1]) close(nullfd);
+		}
+		if (pipefd[1] != STDOUT_FILENO) close(pipefd[1]);
+		execl("/usr/bin/lipc-wait-event", "lipc-wait-event", "-m", "-s", "0",
+		      "com.lab126.powerd",
+		      "goingToScreenSaver,outOfScreenSaver,exitingScreenSaver",
+		      (char *)NULL);
+		_exit(127);
+    }
+    close(pipefd[1]);
+    if (pid < 0) { close(pipefd[0]); return -1; }
+    ui->power_fd = pipefd[0]; ui->power_pid = pid;
+    return 0;
+}
+
+static void power_events_close(UI *ui) {
+    if (ui->power_fd >= 0) { close(ui->power_fd); ui->power_fd = -1; }
+    if (ui->power_pid > 0) {
+		kill(ui->power_pid, SIGINT);
+		while (waitpid(ui->power_pid, NULL, 0) < 0 && errno == EINTR) {}
+		ui->power_pid = 0;
+    }
+    ui->power_buffer_len = 0;
+}
+
+static void ui_layout(UI *ui) {
+    unsigned int width = ui->state.view_width, height = ui->state.view_height;
+    ui->gap = width / 190U; if (ui->gap < 4U) ui->gap = 4U;
+    ui->top_h = height / 25U; if (ui->top_h < 28U) ui->top_h = 28U;
+    ui->status_h = height / 25U; if (ui->status_h < 28U) ui->status_h = 28U;
+    ui->list_y = ui->top_h;
+    ui->list_h = height - ui->top_h - ui->status_h;
+    ui->side_w = width * 13U / 100U;
+    ui->button_x = ui->gap / 2U + ui->side_w + ui->gap;
+    ui->button_w = width - 2U * ui->button_x;
+    ui->button_h = (ui->list_h - (KUAL_PAGE_ROWS - 1U) * ui->gap) / KUAL_PAGE_ROWS;
+    ui->list_h = KUAL_PAGE_ROWS * ui->button_h + (KUAL_PAGE_ROWS - 1U) * ui->gap;
+}
+
 static int ui_init(UI *ui) {
-    memset(ui, 0, sizeof(*ui)); ui->fbfd = -1;
+    memset(ui, 0, sizeof(*ui)); ui->fbfd = ui->power_fd = -1;
     ui->draw_cfg.is_quiet = true; ui->draw_cfg.fontmult = 3;
     ui->draw_cfg.fontname = IBM; ui->draw_cfg.no_refresh = true;
     ui->draw_cfg.is_bgless = true; ui->draw_cfg.wfm_mode = WFM_GC16;
@@ -177,18 +266,10 @@ static int ui_init(UI *ui) {
     if (access(music_symbols, R_OK) == 0 &&
         fbink_add_ot_font_v2(music_symbols, FNT_REGULAR, &ui->music_symbol_cfg) == 0)
         ui->music_symbols_ready = true;
-    unsigned int width = ui->state.view_width, height = ui->state.view_height;
-    ui->gap = width / 190U; if (ui->gap < 4U) ui->gap = 4U;
-    ui->top_h = height / 25U; if (ui->top_h < 28U) ui->top_h = 28U;
-    ui->status_h = height / 25U; if (ui->status_h < 28U) ui->status_h = 28U;
-    ui->list_y = ui->top_h;
-    ui->list_h = height - ui->top_h - ui->status_h;
-    ui->side_w = width * 13U / 100U;
-    ui->button_x = ui->gap / 2U + ui->side_w + ui->gap;
-    ui->button_w = width - 2U * ui->button_x;
-    ui->button_h = (ui->list_h - (KUAL_PAGE_ROWS - 1U) * ui->gap) / KUAL_PAGE_ROWS;
-    ui->list_h = KUAL_PAGE_ROWS * ui->button_h + (KUAL_PAGE_ROWS - 1U) * ui->gap;
+    ui_layout(ui);
     if (ui_inputs_open(ui) != 0) return -1;
+    if (power_events_open(ui) != 0)
+		kual_log("cannot monitor Kindle screen-saver events: %s", strerror(errno));
     return 0;
 }
 
@@ -436,6 +517,63 @@ static void ui_draw(UI *ui) {
     (void)fbink_refresh(ui->fbfd, 0, 0, 0, 0, &refresh);
 }
 
+static void ui_resume_from_screen_saver(UI *ui) {
+    statusbar_hide_if_owned();
+    int result = fbink_reinit(ui->fbfd, &ui->draw_cfg);
+    if (result < 0) kual_log("FBInk reinit after unlock failed: %d", result);
+    fbink_get_state(&ui->draw_cfg, &ui->state);
+    ui_layout(ui);
+    for (size_t i = 0; i < ui->input_count; i++) input_discard(&ui->inputs[i]);
+    ui_inputs_grab(ui, true);
+    ui->screen_saver_active = false;
+    ui_draw(ui);
+}
+
+static void handle_power_event(UI *ui, const char *line) {
+    if (!strncmp(line, "goingToScreenSaver", 18)) {
+		if (!ui->screen_saver_active) ui_inputs_grab(ui, false);
+		ui->screen_saver_active = true;
+    } else if (!strncmp(line, "outOfScreenSaver", 16)) {
+		ui->screen_saver_active = true;
+    } else if (!strncmp(line, "exitingScreenSaver", 18)) {
+		ui_resume_from_screen_saver(ui);
+    }
+}
+
+static void power_events_read(UI *ui) {
+    char chunk[256];
+    ssize_t got;
+    while ((got = read(ui->power_fd, chunk, sizeof(chunk))) > 0) {
+		size_t count = (size_t)got;
+		if (count > sizeof(ui->power_buffer) - ui->power_buffer_len - 1U) {
+			kual_log("discarding oversized Kindle power event");
+			ui->power_buffer_len = 0;
+			continue;
+		}
+		memcpy(ui->power_buffer + ui->power_buffer_len, chunk, count);
+		ui->power_buffer_len += count;
+		ui->power_buffer[ui->power_buffer_len] = '\0';
+		char *line;
+		while ((line = memchr(ui->power_buffer, '\n', ui->power_buffer_len)) != NULL) {
+			size_t length = (size_t)(line - ui->power_buffer);
+			ui->power_buffer[length] = '\0';
+			handle_power_event(ui, ui->power_buffer);
+			size_t consumed = length + 1U;
+			memmove(ui->power_buffer, ui->power_buffer + consumed,
+				ui->power_buffer_len - consumed);
+			ui->power_buffer_len -= consumed;
+			ui->power_buffer[ui->power_buffer_len] = '\0';
+		}
+    }
+    if (got == 0) {
+		kual_log("Kindle screen-saver event monitor exited");
+		power_events_close(ui);
+    } else if (got < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+		kual_log("cannot read Kindle screen-saver events: %s", strerror(errno));
+		power_events_close(ui);
+    }
+}
+
 static void tap_feedback(UI *ui, unsigned int y) {
     FBInkRect rect = {(unsigned short)ui->button_x, (unsigned short)y,
                       (unsigned short)ui->button_w, (unsigned short)ui->button_h};
@@ -623,11 +761,18 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
     sigaction(SIGTERM, &action, NULL); sigaction(SIGINT, &action, NULL); sigaction(SIGQUIT, &action, NULL);
     ui.nav[0] = &menu->root; ui_draw(&ui);
     while (!stopping) {
-        struct pollfd fds[MAX_INPUTS];
-        for (size_t i = 0; i < ui.input_count; i++) fds[i] = (struct pollfd){ui.inputs[i].fd, POLLIN, 0};
-        int ready = poll(fds, ui.input_count, -1);
+		struct pollfd fds[MAX_INPUTS + 1U];
+		bool monitor_power = ui.power_fd >= 0;
+		size_t input_offset = monitor_power ? 1U : 0U;
+		if (monitor_power) fds[0] = (struct pollfd){ui.power_fd, POLLIN, 0};
+		for (size_t i = 0; i < ui.input_count; i++)
+			fds[input_offset + i] = (struct pollfd){ui.inputs[i].fd, POLLIN, 0};
+		int ready = poll(fds, input_offset + ui.input_count, -1);
         if (ready < 0) { if (errno == EINTR) continue; break; }
-        for (size_t i = 0; i < ui.input_count; i++) if (fds[i].revents & POLLIN) {
+		if (monitor_power && fds[0].revents & (POLLIN | POLLHUP | POLLERR))
+			power_events_read(&ui);
+		for (size_t i = 0; i < ui.input_count; i++) if (fds[input_offset + i].revents & POLLIN) {
+			if (ui.screen_saver_active) { input_discard(&ui.inputs[i]); continue; }
             TapResult tap = process_input(&ui, &ui.inputs[i]);
             if (tap.action != TAP_NONE) {
                 int result = handle_tap(&ui, menu, errors, tap);
