@@ -122,6 +122,10 @@ int kual_redirect_stderr(const char *path) {
   return 0;
 }
 
+const char *kual_privilege_indicator(bool is_root) {
+  return is_root ? "#" : "%";
+}
+
 void kual_errors_add(KualErrors *errors, const char *source, const char *format,
                      ...) {
   if (!errors || !format)

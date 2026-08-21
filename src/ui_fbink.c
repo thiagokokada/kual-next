@@ -618,8 +618,8 @@ static void draw_triangle(UI *ui, unsigned int center_x, unsigned int center_y,
 }
 
 static void breadcrumb(UI *ui, char *buffer, size_t size) {
-  snprintf(buffer, size, "$ • %s%s/", ui->breadcrumb_status,
-           *ui->breadcrumb_status ? " | " : "");
+  snprintf(buffer, size, "%s • %s%s/", kual_privilege_indicator(geteuid() == 0),
+           ui->breadcrumb_status, *ui->breadcrumb_status ? " | " : "");
   for (size_t i = 1; i <= ui->depth; i++) {
     size_t used = strlen(buffer);
     if (used + 5U >= size)

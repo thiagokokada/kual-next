@@ -48,9 +48,15 @@ static void test_stderr_redirect(void) {
   assert(!strcmp(contents, "before\nafter\n"));
 }
 
+static void test_privilege_indicator(void) {
+  assert(!strcmp(kual_privilege_indicator(true), "#"));
+  assert(!strcmp(kual_privilege_indicator(false), "%"));
+}
+
 int main(int argc, char **argv) {
   assert(argc == 2);
   test_stderr_redirect();
+  test_privilege_indicator();
   KualMenu menu;
   KualErrors errors = {0};
   kual_menu_init(&menu, argv[1], "KindlePaperWhite5");
