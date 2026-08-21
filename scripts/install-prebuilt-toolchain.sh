@@ -27,7 +27,11 @@ if [ -e "$toolchain_dir" ] || [ -L "$toolchain_dir" ]; then
 fi
 
 stage=$(mktemp -d "${TMPDIR:-/tmp}/kual-next-toolchain.XXXXXX")
-trap 'rm -rf "$stage"' 0 HUP INT TERM
+cleanup() {
+	chmod -R u+w "$stage" 2>/dev/null || :
+	rm -rf "$stage"
+}
+trap cleanup 0 HUP INT TERM
 archive="$stage/$archive_name"
 extract_dir="$stage/extract"
 
@@ -36,6 +40,7 @@ printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c -
 
 mkdir -p "$extract_dir"
 tar --zstd -xf "$archive" -C "$extract_dir"
+chmod -R u+w "$extract_dir"
 staged_toolchain="$extract_dir/x-tools/$target"
 staged_compiler="$staged_toolchain/bin/$target-gcc"
 if [ ! -x "$staged_compiler" ]; then

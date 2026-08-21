@@ -47,6 +47,7 @@ cat >"$compiler" <<'COMPILER'
 printf 'mock kindlehf compiler\n'
 COMPILER
 chmod 755 "$compiler"
+chmod -R a-w "$extract_dir/x-tools"
 EOF
 
 chmod 755 "$mock_bin/curl" "$mock_bin/sha256sum" "$mock_bin/tar"
