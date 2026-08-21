@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "koxtoolchain": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1785664314,
-        "narHash": "sha256-xsjxSXE0CthrVXbVHcGGitwZ1cJAboiqfEbJjibODEk=",
-        "owner": "koreader",
-        "repo": "koxtoolchain",
-        "rev": "6a4407a3cbb5fb2e3513e63c0fd12fcdbe1380af",
-        "type": "github"
-      },
-      "original": {
-        "owner": "koreader",
-        "repo": "koxtoolchain",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1787101114,
@@ -34,7 +18,6 @@
     },
     "root": {
       "inputs": {
-        "koxtoolchain": "koxtoolchain",
         "nixpkgs": "nixpkgs"
       }
     }

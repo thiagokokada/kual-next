@@ -70,9 +70,8 @@ deploying, then open it again through the Kindle scriptlet UI.
 
 ## Kindle cross-build
 
-The one-time toolchain bootstrap downloads and builds
-[koxtoolchain's](https://github.com/koreader/koxtoolchain) `kindlehf` target
-into `.toolchains/`.
+The one-time toolchain setup downloads koxtoolchain's checksum-verified,
+prebuilt `kindlehf` target into `.toolchains/`.
 
 ```sh
 nix develop
@@ -87,3 +86,19 @@ at the Kindle USB storage root so that `documents/KUAL Next.sh` and
 bundled `kual-next/icon.png` as its Kindle library cover.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
+
+## Releases
+
+`VERSION` is the single release version source. After the version change has
+landed on `main` and CI has passed, create and push the matching stable SemVer
+tag, then run the `Release` workflow with that tag:
+
+```sh
+git tag "v$(cat VERSION)"
+git push origin "v$(cat VERSION)"
+```
+
+The workflow verifies that the existing tag matches `VERSION` and belongs to
+`main`, rebuilds the package from the tagged source, and publishes the package
+and its SHA-256 checksum with generated release notes. It does not create tags
+or publish prereleases.

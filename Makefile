@@ -17,7 +17,6 @@ FBINK_DIR := $(CURDIR)/third_party/FBInk
 FBINK_LIB := $(FBINK_DIR)/Release/libfbink.a
 FBINK_FEATURE_STAMP := $(BUILD_DIR)/vendor/.fbink-opentype-build
 TC_ROOT ?= $(CURDIR)/.toolchains
-TOOLCHAIN_FHS ?= kual-toolchain-fhs
 TC_TRIPLE := arm-kindlehf-linux-gnueabihf
 TC_BIN := $(TC_ROOT)/$(TC_TRIPLE)/bin
 DEVICE_CC := $(TC_BIN)/$(TC_TRIPLE)-gcc
@@ -44,9 +43,12 @@ test: $(HOST_BINARY)
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
+	sh ./tests/check-toolchain.sh
+	sh ./tests/check-release.sh
+	actionlint
 
 toolchain:
-	KUAL_TC_ROOT="$(TC_ROOT)" $(TOOLCHAIN_FHS) -c 'exec sh ./scripts/bootstrap-toolchain.sh'
+	KUAL_TC_ROOT="$(TC_ROOT)" sh ./scripts/install-prebuilt-toolchain.sh
 
 $(FBINK_FEATURE_STAMP): $(FBINK_DIR)/Makefile $(FBINK_DIR)/fbink.h
 	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib

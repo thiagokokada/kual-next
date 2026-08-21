@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable release tag, such as v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Check out release definitions
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+      - name: Validate release tag
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          version=$(sh scripts/validate-release-tag.sh "$RELEASE_TAG" origin/main)
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            >/dev/null 2>&1; then
+            echo "A GitHub Release already exists for $RELEASE_TAG." >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+      - name: Check out tagged source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Install Kindle toolchain
+        run: nix develop --command make toolchain
+      - name: Build and verify package
+        run: nix develop --command make package
+      - name: Create package checksum
+        env:
+          VERSION: ${{ steps.validate.outputs.version }}
+        run: |
+          package="kual-next-$VERSION-kindlehf.zip"
+          cd dist
+          sha256sum "$package" >"$package.sha256"
+      - name: Preserve release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ inputs.tag }}
+          path: |
+            dist/kual-next-${{ steps.validate.outputs.version }}-kindlehf.zip
+            dist/kual-next-${{ steps.validate.outputs.version }}-kindlehf.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v8
+        with:
+          name: release-${{ inputs.tag }}
+          path: release-assets
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          package="release-assets/kual-next-$VERSION-kindlehf.zip"
+          checksum="$package.sha256"
+          gh release create "$RELEASE_TAG" "$package" "$checksum" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "KUAL Next $VERSION" \
+            --verify-tag \
+            --generate-notes \
+            --fail-on-no-commits
