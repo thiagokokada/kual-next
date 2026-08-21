@@ -17,7 +17,6 @@ FBINK_DIR := $(CURDIR)/third_party/FBInk
 FBINK_LIB := $(FBINK_DIR)/Release/libfbink.a
 FBINK_FEATURE_STAMP := $(BUILD_DIR)/vendor/.fbink-opentype-build
 TC_ROOT ?= $(CURDIR)/.toolchains
-TOOLCHAIN_FHS ?= kual-toolchain-fhs
 TC_TRIPLE := arm-kindlehf-linux-gnueabihf
 TC_BIN := $(TC_ROOT)/$(TC_TRIPLE)/bin
 DEVICE_CC := $(TC_BIN)/$(TC_TRIPLE)-gcc
@@ -31,7 +30,7 @@ DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) 
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
 
-.PHONY: all host test toolchain toolchain-source kindle check package deploy clean
+.PHONY: all host test toolchain kindle check package deploy clean
 all: host
 
 host: $(HOST_BINARY)
@@ -50,9 +49,6 @@ test: $(HOST_BINARY)
 
 toolchain:
 	KUAL_TC_ROOT="$(TC_ROOT)" sh ./scripts/install-prebuilt-toolchain.sh
-
-toolchain-source:
-	KUAL_TC_ROOT="$(TC_ROOT)" $(TOOLCHAIN_FHS) -c 'exec sh ./scripts/bootstrap-toolchain.sh'
 
 $(FBINK_FEATURE_STAMP): $(FBINK_DIR)/Makefile $(FBINK_DIR)/fbink.h
 	PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib

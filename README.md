@@ -80,10 +80,6 @@ make check
 make package
 ```
 
-To build koxtoolchain from its pinned sources instead, use
-`make toolchain-source`. This is substantially slower and is intended as a
-fallback when the prebuilt release cannot be used.
-
 The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
 at the Kindle USB storage root so that `documents/KUAL Next.sh` and
 `kual-next/bin/kual-next` land under `/mnt/us`. The scriptlet metadata uses the

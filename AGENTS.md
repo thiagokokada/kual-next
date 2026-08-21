@@ -50,12 +50,6 @@ nix develop
 make toolchain
 ```
 
-Use `make toolchain-source` only when the prebuilt release cannot be used and
-the pinned toolchain must be built from source.
-
-Do not patch koxtoolchain or its upstream sources. The project uses a
-`buildFHSEnv`-based wrapper to satisfy its FHS assumptions.
-
 Before handing off a Kindle-facing change, run:
 
 ```sh
