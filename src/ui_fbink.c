@@ -658,9 +658,9 @@ static void ui_draw(UI *ui) {
   bool up_enabled = ui->depth > 0U;
   bool next_enabled = pages > 1U;
   rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
-                  170U);
+                  up_enabled ? 55U : 170U);
   rounded_outline(ui, right_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
-                  170U);
+                  next_enabled ? 55U : 170U);
 
   char trail[768];
   breadcrumb(ui, trail, sizeof(trail));
