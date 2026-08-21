@@ -62,6 +62,11 @@ check, and the static-link check. The resulting archive is written under
 `dist/`. Build products, toolchains, caches, and packages are generated files
 and must not be committed.
 
+After changing first-party C sources or headers, run `clang-format -i` on each
+changed file from inside `nix develop`, then verify those files with
+`clang-format --dry-run --Werror`. Do not reformat vendored sources under
+`third_party/`.
+
 ## Implementation constraints
 
 - Write portable C11 and keep the existing warning-clean build flags.
