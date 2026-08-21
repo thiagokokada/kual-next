@@ -123,3 +123,7 @@ Keep unrelated changes out of commits. When a request contains independent
 structural, behavior, and visual fixes, create separate verified commits for
 each concern. Preserve existing user changes and never rewrite or reset history
 unless explicitly requested.
+
+For a release, update `VERSION`, merge it to `main`, create and push the matching
+stable `vMAJOR.MINOR.PATCH` tag, then manually run the GitHub `Release` workflow
+with that existing tag. The workflow must not create or move release tags.

@@ -90,3 +90,19 @@ at the Kindle USB storage root so that `documents/KUAL Next.sh` and
 bundled `kual-next/icon.png` as its Kindle library cover.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
+
+## Releases
+
+`VERSION` is the single release version source. After the version change has
+landed on `main` and CI has passed, create and push the matching stable SemVer
+tag, then run the `Release` workflow with that tag:
+
+```sh
+git tag "v$(cat VERSION)"
+git push origin "v$(cat VERSION)"
+```
+
+The workflow verifies that the existing tag matches `VERSION` and belongs to
+`main`, rebuilds the package from the tagged source, and publishes the package
+and its SHA-256 checksum with generated release notes. It does not create tags
+or publish prereleases.

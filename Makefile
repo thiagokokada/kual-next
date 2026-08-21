@@ -45,6 +45,7 @@ test: $(HOST_BINARY)
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
 	sh ./tests/check-toolchain.sh
+	sh ./tests/check-release.sh
 	actionlint
 
 toolchain:
