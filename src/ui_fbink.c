@@ -54,6 +54,35 @@ typedef struct {
 static volatile sig_atomic_t stopping;
 static void stop_handler(int sig) { (void)sig; stopping = 1; }
 
+static bool statusbar_owned(void) {
+    const char *value = getenv("KUAL_NEXT_STATUSBAR_STOPPED");
+    return value && !strcmp(value, "1");
+}
+
+static int service_command(const char *path) {
+    pid_t pid = fork();
+    if (pid == 0) {
+		int nullfd = open("/dev/null", O_RDWR);
+		if (nullfd >= 0) {
+			dup2(nullfd, STDOUT_FILENO); dup2(nullfd, STDERR_FILENO);
+			if (nullfd > STDERR_FILENO) close(nullfd);
+		}
+		execl(path, path, "statusbar", (char *)NULL);
+		_exit(127);
+    }
+    if (pid < 0) return -1;
+    int status;
+    while (waitpid(pid, &status, 0) < 0) if (errno != EINTR) return -1;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+static void statusbar_restore_if_owned(void) {
+    if (!statusbar_owned()) return;
+    if (service_command("/sbin/status") != 0 && service_command("/sbin/start") != 0)
+		kual_log("failed to restore Kindle statusbar before action");
+    unsetenv("KUAL_NEXT_STATUSBAR_STOPPED");
+}
+
 const char *kual_model_from_fbink_name(const char *name) {
     static const struct { const char *fbink, *kual; } models[] = {
         {"PaperWhite 6", "KindlePaperWhite6"}, {"PaperWhite 5", "KindlePaperWhite5"},
@@ -497,6 +526,7 @@ static int run_background(UI *ui, KualEntry *entry) {
 static int exec_and_exit(UI *ui, KualEntry *entry) {
     char *command = action_command(entry), *cwd = kual_xstrdup(entry->working_dir);
     ui_cleanup(ui);
+    statusbar_restore_if_owned();
     if (chdir(cwd) != 0) { kual_log("cannot chdir to %s: %s", cwd, strerror(errno)); free(cwd); free(command); return 126; }
     free(cwd); execl("/bin/sh", "sh", "-c", command, (char *)NULL);
     kual_log("cannot execute '%s': %s", command, strerror(errno)); free(command); return 127;
