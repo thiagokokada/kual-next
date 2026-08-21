@@ -652,19 +652,21 @@ static void ui_draw(UI *ui) {
   unsigned int radius = ui->state.view_width / 85U;
   if (radius < 8U)
     radius = 8U;
-  rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
-                  170U);
-  rounded_outline(ui, right_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
-                  170U);
+  size_t total = menu->child_count + 1U;
+  size_t first = ui->page * KUAL_PAGE_ROWS;
+  size_t pages = (total + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
+  bool up_enabled = ui->depth > 0U;
+  bool next_enabled = pages > 1U;
+  rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius,
+                  up_enabled ? 2U : 1U, up_enabled ? 0U : 170U);
+  rounded_outline(ui, right_x, ui->list_y, ui->side_w, ui->list_h, radius,
+                  next_enabled ? 2U : 1U, next_enabled ? 0U : 170U);
 
   char trail[768];
   breadcrumb(ui, trail, sizeof(trail));
   print_area(ui, trail, outer_x, 0U, ui->state.view_width - 2U * outer_x,
              ui->top_h, ui->chrome_text_size, false);
 
-  size_t total = menu->child_count + 1U;
-  size_t first = ui->page * KUAL_PAGE_ROWS;
-  size_t pages = (total + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
   bool final_page = ui->page + 1U == pages;
   for (size_t row = 0; row < KUAL_PAGE_ROWS; row++) {
     size_t index = first + row;
@@ -688,9 +690,9 @@ static void ui_draw(UI *ui) {
   }
 
   draw_triangle(ui, outer_x + ui->side_w / 2U, ui->list_y + ui->list_h / 2U,
-                true, ui->depth ? 80U : 165U);
+                true, up_enabled ? 0U : 165U);
   draw_triangle(ui, right_x + ui->side_w / 2U, ui->list_y + ui->list_h / 2U,
-                false, pages > 1U ? 80U : 165U);
+                false, next_enabled ? 0U : 165U);
 
   char footer[512];
   if (*ui->status)
