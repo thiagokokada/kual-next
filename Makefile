@@ -31,7 +31,7 @@ DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) 
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
 
-.PHONY: all host test toolchain kindle check package deploy clean
+.PHONY: all host test toolchain toolchain-source kindle check package deploy clean
 all: host
 
 host: $(HOST_BINARY)
@@ -44,8 +44,12 @@ test: $(HOST_BINARY)
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
+	sh ./tests/check-toolchain.sh
 
 toolchain:
+	KUAL_TC_ROOT="$(TC_ROOT)" sh ./scripts/install-prebuilt-toolchain.sh
+
+toolchain-source:
 	KUAL_TC_ROOT="$(TC_ROOT)" $(TOOLCHAIN_FHS) -c 'exec sh ./scripts/bootstrap-toolchain.sh'
 
 $(FBINK_FEATURE_STAMP): $(FBINK_DIR)/Makefile $(FBINK_DIR)/fbink.h

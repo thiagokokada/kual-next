@@ -55,6 +55,7 @@
       devPackages = with pkgs; [
         bash
         clang-tools
+        curl
         file
         fontconfig
         gcc
@@ -67,6 +68,7 @@
         pkg-config
         unzip
         zip
+        zstd
       ];
       toolchainFhs = pkgs.buildFHSEnv {
         name = "kual-toolchain-fhs";

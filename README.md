@@ -70,9 +70,8 @@ deploying, then open it again through the Kindle scriptlet UI.
 
 ## Kindle cross-build
 
-The one-time toolchain bootstrap downloads and builds
-[koxtoolchain's](https://github.com/koreader/koxtoolchain) `kindlehf` target
-into `.toolchains/`.
+The one-time toolchain setup downloads koxtoolchain's checksum-verified,
+prebuilt `kindlehf` target into `.toolchains/`.
 
 ```sh
 nix develop
@@ -80,6 +79,10 @@ make toolchain
 make check
 make package
 ```
+
+To build koxtoolchain from its pinned sources instead, use
+`make toolchain-source`. This is substantially slower and is intended as a
+fallback when the prebuilt release cannot be used.
 
 The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
 at the Kindle USB storage root so that `documents/KUAL Next.sh` and
