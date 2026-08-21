@@ -2,6 +2,7 @@
 # Name: KUAL Next
 # Author: KUAL Next contributors
 # Icon: /mnt/us/kual-next/icon.png
+# DontUseFBInk
 
 set -u
 
@@ -10,10 +11,6 @@ launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}
 extensions=${KUAL_NEXT_EXTENSIONS:-}
 statusbar_owned=0
 child_pid=
-
-# SH Integration pipes script output to its own FBInk process. Close that pipe
-# before launching our full-screen UI so the two renderers cannot race.
-exec >>"$log" 2>&1
 
 log_message() {
     printf '%s\n' "$*" >>"$log"

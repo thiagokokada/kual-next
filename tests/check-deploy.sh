@@ -10,38 +10,11 @@ sh -n "$root/assets/KUAL Next.sh"
 grep -Fq 'launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}' \
 	"$root/assets/KUAL Next.sh"
 grep -Fq 'extensions=${KUAL_NEXT_EXTENSIONS:-}' "$root/assets/KUAL Next.sh"
-grep -Fq 'exec >>"$log" 2>&1' "$root/assets/KUAL Next.sh"
-
-scriptlet_launcher="$tmpdir/scriptlet-launcher"
-scriptlet_started="$tmpdir/scriptlet-started"
-scriptlet_release="$tmpdir/scriptlet-release"
-scriptlet_pipe_closed="$tmpdir/scriptlet-pipe-closed"
-cat >"$scriptlet_launcher" <<'MOCK'
-#!/bin/sh
-touch "$SCRIPTLET_TEST_STARTED"
-while [ ! -e "$SCRIPTLET_TEST_RELEASE" ]; do
-	sleep 0.05
-done
-MOCK
-chmod 755 "$scriptlet_launcher"
-export SCRIPTLET_TEST_STARTED="$scriptlet_started"
-export SCRIPTLET_TEST_RELEASE="$scriptlet_release"
-KUAL_NEXT_BINARY="$scriptlet_launcher" KUAL_NEXT_LOG="$tmpdir/scriptlet.log" \
-	sh "$root/assets/KUAL Next.sh" | {
-		cat >/dev/null
-		touch "$scriptlet_pipe_closed"
-	} &
-scriptlet_pid=$!
-tries=0
-while { [ ! -e "$scriptlet_started" ] || [ ! -e "$scriptlet_pipe_closed" ]; } &&
-	[ "$tries" -lt 100 ]; do
-	sleep 0.05
-	tries=$((tries + 1))
-done
-test -e "$scriptlet_started"
-test -e "$scriptlet_pipe_closed"
-touch "$scriptlet_release"
-wait "$scriptlet_pid"
+grep -Fxq '# DontUseFBInk' "$root/assets/KUAL Next.sh"
+if grep -Fq 'exec >>"$log" 2>&1' "$root/assets/KUAL Next.sh"; then
+	echo "scriptlet still closes SH Integration's FBInk pipe manually" >&2
+	exit 1
+fi
 
 if sh "$root/scripts/deploy-kindle.sh" >"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "deployment without arguments unexpectedly succeeded" >&2
