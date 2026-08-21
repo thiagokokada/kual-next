@@ -78,11 +78,18 @@ and must not be committed.
 
 ## Kindle framework policy
 
-The Amazon Home/framework may repaint over direct framebuffer content. This is
-a known limitation for now. Do not stop or suspend `awesome`, Pillow,
-`KPPMainApp`, `statusbar`, or `lab126_gui`, and do not restore saved framebuffer
-dumps. Those approaches interfered with applications launched from the menu
-and could leave a blank screen after KOReader exited.
+The Amazon Home/framework may repaint over direct framebuffer content. KUAL
+Next may stop only the separate Upstart `statusbar` service while its UI is
+visible, provided it records whether the service was originally running and
+restores it before launching an `exitmenu` action and on every exit path. Keep
+the scriptlet supervisor fallback so a launcher crash also restores the
+service. `/sbin/start statusbar` is the on-device recovery command.
+
+Do not stop or suspend `awesome`, Pillow, `KPPMainApp`, or `lab126_gui`, and do
+not restore saved framebuffer dumps. Those broader approaches interfered with
+applications launched from the menu and could leave a blank screen after
+KOReader exited. Continue listening for Kindle screen-saver events, releasing
+input grabs while locked, and issuing a deferred full redraw after unlock.
 
 An Awesome-managed X11 ownership window has been considered but is explicitly
 deferred. Do not introduce X11 ownership or framework lifecycle management

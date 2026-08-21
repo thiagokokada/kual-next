@@ -22,7 +22,7 @@ scope.
 
 | Area | Limitation |
 | --- | --- |
-| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. The Home screen may repaint over it, and returning from applications such as KOReader or kTerm may expose a stale or blank screen. |
+| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. It suppresses the KPP status bar while visible and redraws after screen unlock, but unrelated framework windows may still repaint over it. |
 | Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Actions run normally, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
