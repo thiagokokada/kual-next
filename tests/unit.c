@@ -1,0 +1,44 @@
+#include "kual.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+static KualEntry *find_entry(KualEntry *parent, const char *name) {
+  for (size_t i = 0; i < parent->child_count; i++) {
+    KualEntry *entry = &parent->children[i];
+    if (!strcmp(entry->name, name))
+      return entry;
+    KualEntry *nested = find_entry(entry, name);
+    if (nested)
+      return nested;
+  }
+  return NULL;
+}
+
+int main(int argc, char **argv) {
+  assert(argc == 2);
+  KualMenu menu;
+  KualErrors errors = {0};
+  kual_menu_init(&menu, argv[1], "KindlePaperWhite5");
+  assert(kual_menu_load(&menu, &errors) == 0);
+  assert(errors.len == 0);
+
+  KualEntry *quoted = find_entry(&menu.root, "Quoted options");
+  assert(quoted);
+  assert(quoted->priority == 7);
+  assert(!quoted->exit_menu);
+  assert(quoted->checked_after);
+  assert(quoted->refresh_after);
+  assert(!quoted->show_status);
+  assert(quoted->show_date);
+  assert(!quoted->hidden);
+
+  KualEntry *beta = find_entry(&menu.root, "Beta action");
+  assert(beta && beta->priority == -5);
+
+  kual_menu_free(&menu);
+  kual_errors_free(&errors);
+  puts("host unit tests passed");
+  return 0;
+}

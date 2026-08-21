@@ -12,6 +12,8 @@ CPPFLAGS := -Iinclude -Ithird_party -DKUAL_NEXT_VERSION='"$(VERSION)"'
 CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
 HOST_SOURCES := $(CORE_SOURCES) third_party/yxml.c src/main.c
 HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
+TEST_SOURCES := $(CORE_SOURCES) third_party/yxml.c tests/unit.c
+TEST_BINARY := $(BUILD_DIR)/host/$(PROJECT)-tests
 
 FBINK_DIR := $(CURDIR)/third_party/FBInk
 FBINK_LIB := $(FBINK_DIR)/Release/libfbink.a
@@ -39,8 +41,13 @@ $(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h third_party/yx
 	mkdir -p $(@D)
 	$(HOST_CC) $(CPPFLAGS) $(HOST_CFLAGS) -DKUAL_HOST -o $@ $(HOST_SOURCES)
 
-test: $(HOST_BINARY)
+$(TEST_BINARY): $(TEST_SOURCES) include/kual.h third_party/jsmn.h third_party/yxml.h VERSION
+	mkdir -p $(@D)
+	$(HOST_CC) $(CPPFLAGS) $(HOST_CFLAGS) -DKUAL_HOST -o $@ $(TEST_SOURCES)
+
+test: $(HOST_BINARY) $(TEST_BINARY)
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
+	$(TEST_BINARY) tests/fixtures/extensions
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
 	sh ./tests/check-toolchain.sh

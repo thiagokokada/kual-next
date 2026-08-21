@@ -468,7 +468,7 @@ static char *tok_string(const char *json, const jsmntok_t *tok) {
 }
 
 static bool tok_bool(const char *json, const jsmntok_t *tok, bool fallback) {
-  if (tok->type != JSMN_PRIMITIVE)
+  if (tok->type != JSMN_PRIMITIVE && tok->type != JSMN_STRING)
     return fallback;
   size_t n = (size_t)(tok->end - tok->start);
   if ((n == 4 && !memcmp(json + tok->start, "true", 4)) ||
@@ -481,7 +481,7 @@ static bool tok_bool(const char *json, const jsmntok_t *tok, bool fallback) {
 }
 
 static int tok_int(const char *json, const jsmntok_t *tok, int fallback) {
-  if (tok->type != JSMN_PRIMITIVE)
+  if (tok->type != JSMN_PRIMITIVE && tok->type != JSMN_STRING)
     return fallback;
   char *s = slice(json + tok->start, json + tok->end), *end = NULL;
   long value = strtol(s, &end, 10);

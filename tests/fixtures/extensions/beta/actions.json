@@ -2,7 +2,7 @@
   "items": [
     {
       "name": "Beta action",
-      "priority": -5,
+      "priority": "-5",
       "action": "./beta.sh",
       "if": "\"alpha\" -ext",
       "internal": "status Ready",

@@ -27,6 +27,17 @@
           "action": ":",
           "if": "\"sample_mode\" \"enabled\" -o"
         },
+		{
+		  "name": "Quoted options",
+		  "action": ":",
+		  "priority": "7",
+		  "exitmenu": "false",
+		  "checked": "true",
+		  "refresh": "true",
+		  "status": "false",
+		  "date": "true",
+		  "hidden": "false"
+		},
         {"name": "Invisible", "action": ":", "hidden": true}
       ]
     }
