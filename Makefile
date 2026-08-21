@@ -32,7 +32,7 @@ DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) 
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
 
-.PHONY: all host test toolchain kindle check package deploy clean
+.PHONY: all host test toolchain kindle check package deploy device-ui-test clean
 all: host
 
 host: $(HOST_BINARY)
@@ -50,6 +50,7 @@ test: $(HOST_BINARY) $(TEST_BINARY)
 	$(TEST_BINARY) tests/fixtures/extensions
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
+	sh ./tests/check-device-ui.sh
 	sh ./tests/check-toolchain.sh
 	sh ./tests/check-release.sh
 	actionlint
@@ -106,6 +107,10 @@ deploy:
 	@test -n "$(KINDLE_HOST)" || { echo "KINDLE_HOST is required (for example: make deploy KINDLE_HOST=root@kindle)" >&2; exit 2; }
 	$(MAKE) package
 	SSH="$(SSH)" SCP="$(SCP)" sh ./scripts/deploy-kindle.sh "$(KINDLE_HOST)" "$(PACKAGE)"
+
+device-ui-test: kindle
+	@test -n "$(KINDLE_HOST)" || { echo "KINDLE_HOST is required (for example: make device-ui-test KINDLE_HOST=root@kindle)" >&2; exit 2; }
+	SSH="$(SSH)" SCP="$(SCP)" sh ./scripts/test-kindle-ui.sh "$(KINDLE_HOST)"
 
 clean:
 	@if [ -f "$(FBINK_DIR)/Makefile" ]; then PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib; fi

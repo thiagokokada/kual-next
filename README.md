@@ -113,6 +113,27 @@ honors the `SSH` and `SCP` environment variables, verifies the uploaded archive,
 and refuses to overwrite KUAL Next while it is running. Quit the launcher before
 deploying, then open it again through the Kindle scriptlet UI.
 
+### Interactive device UI test
+
+To inspect pagination and exercise safe dummy actions without changing the
+installed launcher or `/mnt/us/extensions`, quit KUAL Next and run:
+
+```sh
+nix develop
+make device-ui-test KINDLE_HOST=root@your-kindle
+```
+
+The target stages the current device binary and test extensions under
+`/tmp/kual-next-ui-test`, then opens KUAL Next with that isolated extension
+tree. Keep the SSH command attached while testing and quit the launcher when
+finished. The status bar is restored and the staged files are removed on exit.
+
+The fixture contains a multi-page test menu and a nested multi-page submenu,
+plus collation, breadcrumb and status messages, checked/date/refresh behaviors,
+and harmless actions that append to `/var/tmp/kual-next-ui-test.log`. Action
+stderr also exercises the normal `/var/tmp/kual-next.log` path. Neither log is
+deleted automatically so it can be inspected after the test.
+
 ## Kindle cross-build
 
 The toolchain setup downloads a prebuilt

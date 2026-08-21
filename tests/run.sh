@@ -31,6 +31,17 @@ test ! -s "$tmpdir/no-collation.errors"
 test "$(grep -c '> Shared$' "$tmpdir/no-collation.tree")" -eq 3
 ! grep -q '> Shared+$' "$tmpdir/no-collation.tree"
 
+device_fixture="$root/device-fixtures/extensions"
+"$binary" --validate --extensions "$device_fixture" --model KindlePaperWhite5 \
+    > "$tmpdir/device-tree" 2> "$tmpdir/device-errors"
+test ! -s "$tmpdir/device-errors"
+grep -Fq "KUAL Next $version; model=KindlePaperWhite5; extensions=1; entries=1" \
+    "$tmpdir/device-tree"
+grep -q '^> Device UI Test$' "$tmpdir/device-tree"
+grep -q '^  > Collated section+$' "$tmpdir/device-tree"
+test "$(grep -c '^  \(-\|>\) ' "$tmpdir/device-tree")" -eq 15
+test "$(grep -c '^    - Nested [0-9][0-9] =>' "$tmpdir/device-tree")" -eq 12
+
 mkdir -p "$tmpdir/xml/extensions/proper"
 printf '%s\n' '<?xml version="1.0"?>' \
     '<extension>' \

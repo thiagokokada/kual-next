@@ -1,0 +1,81 @@
+{
+  "items": [
+    {
+      "name": "Device UI Test",
+      "items": [
+        {
+          "name": "01 Breadcrumb message",
+          "action": ":",
+          "exitmenu": false,
+          "status": false,
+          "internal": "breadcrumb Temporary test fixture"
+        },
+        {
+          "name": "02 Status message",
+          "action": ":",
+          "exitmenu": false,
+          "status": false,
+          "internal": "status Custom status message"
+        },
+        {
+          "name": "03 Checked after tap",
+          "action": "bin/log-action.sh",
+          "params": "checked",
+          "exitmenu": false,
+          "status": false,
+          "checked": true,
+          "internal": "status Checkmark enabled"
+        },
+        {
+          "name": "04 Show date after tap",
+          "action": "bin/log-action.sh",
+          "params": "date",
+          "exitmenu": false,
+          "status": false,
+          "date": true
+        },
+        {
+          "name": "05 Refresh this menu",
+          "action": "bin/log-action.sh",
+          "params": "refresh",
+          "exitmenu": false,
+          "status": false,
+          "refresh": true,
+          "internal": "status Reloading temporary fixture"
+        },
+        {
+          "name": "06 Write action and stderr logs",
+          "action": "bin/log-action.sh",
+          "params": "logging",
+          "exitmenu": false
+        },
+        {
+          "name": "07 Nested multi-page menu",
+          "items": [
+            {"name": "Nested 01", "action": "bin/log-action.sh", "params": "nested-01", "exitmenu": false},
+            {"name": "Nested 02", "action": "bin/log-action.sh", "params": "nested-02", "exitmenu": false},
+            {"name": "Nested 03", "action": "bin/log-action.sh", "params": "nested-03", "exitmenu": false},
+            {"name": "Nested 04", "action": "bin/log-action.sh", "params": "nested-04", "exitmenu": false},
+            {"name": "Nested 05", "action": "bin/log-action.sh", "params": "nested-05", "exitmenu": false},
+            {"name": "Nested 06", "action": "bin/log-action.sh", "params": "nested-06", "exitmenu": false},
+            {"name": "Nested 07", "action": "bin/log-action.sh", "params": "nested-07", "exitmenu": false},
+            {"name": "Nested 08", "action": "bin/log-action.sh", "params": "nested-08", "exitmenu": false},
+            {"name": "Nested 09", "action": "bin/log-action.sh", "params": "nested-09", "exitmenu": false},
+            {"name": "Nested 10", "action": "bin/log-action.sh", "params": "nested-10", "exitmenu": false},
+            {"name": "Nested 11", "action": "bin/log-action.sh", "params": "nested-11", "exitmenu": false},
+            {"name": "Nested 12", "action": "bin/log-action.sh", "params": "nested-12", "exitmenu": false}
+          ]
+        },
+        {"name": "08 Page filler", "action": "bin/log-action.sh", "params": "filler-08", "exitmenu": false},
+        {"name": "09 Page filler", "action": "bin/log-action.sh", "params": "filler-09", "exitmenu": false},
+        {"name": "10 Page filler", "action": "bin/log-action.sh", "params": "filler-10", "exitmenu": false},
+        {"name": "11 Page filler", "action": "bin/log-action.sh", "params": "filler-11", "exitmenu": false},
+        {"name": "12 Page filler", "action": "bin/log-action.sh", "params": "filler-12", "exitmenu": false},
+        {"name": "13 Page filler", "action": "bin/log-action.sh", "params": "filler-13", "exitmenu": false},
+        {"name": "14 Page filler", "action": "bin/log-action.sh", "params": "filler-14", "exitmenu": false},
+        {"name": "Collated section", "items": [{"name": "Collated A", "action": "bin/log-action.sh", "params": "collated-a", "exitmenu": false}]},
+        {"name": "Collated section", "items": [{"name": "Collated B", "action": "bin/log-action.sh", "params": "collated-b", "exitmenu": false}]}
+      ]
+    }
+  ]
+}
