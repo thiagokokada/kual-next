@@ -6,6 +6,8 @@
 set -u
 
 log=/var/tmp/kual-next.log
+launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}
+extensions=${KUAL_NEXT_EXTENSIONS:-}
 statusbar_owned=0
 child_pid=
 
@@ -45,7 +47,11 @@ if [ -f /etc/upstart/statusbar.conf ] && statusbar_running; then
 	fi
 fi
 
-/mnt/us/kual-next/bin/kual-next &
+if [ -n "$extensions" ]; then
+	"$launcher" --extensions "$extensions" &
+else
+	"$launcher" &
+fi
 child_pid=$!
 run_status=0
 while :; do

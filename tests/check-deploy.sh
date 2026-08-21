@@ -6,6 +6,11 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 
+sh -n "$root/assets/KUAL Next.sh"
+grep -Fq 'launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}' \
+	"$root/assets/KUAL Next.sh"
+grep -Fq 'extensions=${KUAL_NEXT_EXTENSIONS:-}' "$root/assets/KUAL Next.sh"
+
 if sh "$root/scripts/deploy-kindle.sh" >"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "deployment without arguments unexpectedly succeeded" >&2
 	exit 1
