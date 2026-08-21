@@ -5,65 +5,67 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#define KUAL_NEXT_VERSION "0.1.0"
+#ifndef KUAL_NEXT_VERSION
+#error "KUAL_NEXT_VERSION must be supplied by the build system"
+#endif
 #define KUAL_DEFAULT_EXTENSIONS "/mnt/us/extensions"
 #define KUAL_DEFAULT_LOG "/var/tmp/kual-next.log"
 #define KUAL_MAX_DEPTH 10
 
 typedef struct {
-    char *key;
-    char *value;
+  char *key;
+  char *value;
 } KualOption;
 
 typedef struct {
-    KualOption *items;
-    size_t len;
-    size_t cap;
+  KualOption *items;
+  size_t len;
+  size_t cap;
 } KualConfig;
 
 typedef struct KualEntry {
-    char *name;
-    char *action;
-    char *params;
-    char *condition;
-    char *internal;
-    char *working_dir;
-    char *extension_id;
-    char *source;
-    int priority;
-    size_t order;
-    bool exit_menu;
-    bool checked_after;
-    bool checked;
-    bool refresh_after;
-    bool show_status;
-    bool show_date;
-    bool hidden;
-    struct KualEntry *children;
-    size_t child_count;
-    size_t child_cap;
+  char *name;
+  char *action;
+  char *params;
+  char *condition;
+  char *internal;
+  char *working_dir;
+  char *extension_id;
+  char *source;
+  int priority;
+  size_t order;
+  bool exit_menu;
+  bool checked_after;
+  bool checked;
+  bool refresh_after;
+  bool show_status;
+  bool show_date;
+  bool hidden;
+  struct KualEntry *children;
+  size_t child_count;
+  size_t child_cap;
 } KualEntry;
 
 typedef struct {
-    KualEntry root;
-    KualConfig config;
-    char **extension_ids;
-    size_t extension_id_count;
-    size_t extension_id_cap;
-    char *extensions_dir;
-    char *model;
-    size_t next_order;
+  KualEntry root;
+  KualConfig config;
+  char **extension_ids;
+  size_t extension_id_count;
+  size_t extension_id_cap;
+  char *extensions_dir;
+  char *model;
+  size_t next_order;
 } KualMenu;
 
 typedef struct {
-    char *source;
-    char *message;
+  char *source;
+  char *message;
 } KualError;
 
 typedef struct {
-    KualError *items;
-    size_t len;
-    size_t cap;
+  KualError *items;
+  size_t len;
+  size_t cap;
 } KualErrors;
 
 void *kual_xcalloc(size_t count, size_t size);
@@ -80,10 +82,12 @@ void kual_config_set(KualConfig *config, const char *key, const char *value);
 const char *kual_config_get(const KualConfig *config, const char *key);
 int kual_config_load(KualConfig *config, const char *path, KualErrors *errors);
 
-void kual_errors_add(KualErrors *errors, const char *source, const char *format, ...);
+void kual_errors_add(KualErrors *errors, const char *source, const char *format,
+                     ...);
 void kual_errors_free(KualErrors *errors);
 
-void kual_menu_init(KualMenu *menu, const char *extensions_dir, const char *model);
+void kual_menu_init(KualMenu *menu, const char *extensions_dir,
+                    const char *model);
 void kual_menu_free(KualMenu *menu);
 int kual_menu_load(KualMenu *menu, KualErrors *errors);
 void kual_menu_add_errors(KualMenu *menu, const KualErrors *errors);

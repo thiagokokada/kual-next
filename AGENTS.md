@@ -62,6 +62,9 @@ check, and the static-link check. The resulting archive is written under
 `dist/`. Build products, toolchains, caches, and packages are generated files
 and must not be committed.
 
+The root `VERSION` file is the single version source for both the compiled UI
+and package filename. Change it for releases; do not add another version macro.
+
 After changing first-party C sources or headers, run `clang-format -i` on each
 changed file from inside `nix develop`, then verify those files with
 `clang-format --dry-run --Werror`. Do not reformat vendored sources under

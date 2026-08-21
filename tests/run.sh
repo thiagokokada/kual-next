@@ -2,15 +2,16 @@
 set -eu
 
 binary=${1:?host validator path required}
+version=${KUAL_TEST_VERSION:?KUAL_TEST_VERSION is required}
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 fixture="$root/fixtures/extensions"
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 
-"$binary" --version | grep -q '^kual-next 0.1.0$'
+test "$("$binary" --version)" = "kual-next $version"
 "$binary" --validate --extensions "$fixture" --model KindlePaperWhite5 > "$tmpdir/tree" 2> "$tmpdir/errors"
 test ! -s "$tmpdir/errors"
-grep -q '^KUAL Next 0.1.0; model=KindlePaperWhite5; extensions=2; entries=2$' "$tmpdir/tree"
+grep -Fq "KUAL Next $version; model=KindlePaperWhite5; extensions=2; entries=2" "$tmpdir/tree"
 test "$(grep -n 'Beta action' "$tmpdir/tree" | cut -d: -f1)" -lt "$(grep -n '> Alpha' "$tmpdir/tree" | cut -d: -f1)"
 grep -q 'Run Unicode ✓ => bin/run.sh one two' "$tmpdir/tree"
 grep -q 'Model match => :' "$tmpdir/tree"
@@ -30,7 +31,7 @@ printf '%s\n' '{"items":[{"name":"Proper XML","action":":","if":"\"xml-proper\" 
 "$binary" --validate --extensions "$tmpdir/xml/extensions" \
     > "$tmpdir/xml/tree" 2> "$tmpdir/xml/errors"
 test ! -s "$tmpdir/xml/errors"
-grep -q '^KUAL Next 0.1.0; model=Unknown; extensions=1; entries=1$' "$tmpdir/xml/tree"
+grep -Fq "KUAL Next $version; model=Unknown; extensions=1; entries=1" "$tmpdir/xml/tree"
 grep -q 'Proper XML => :' "$tmpdir/xml/tree"
 
 mkdir -p "$tmpdir/xml-broken/extensions/broken"

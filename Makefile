@@ -1,12 +1,12 @@
 SHELL := /bin/sh
 
 PROJECT := kual-next
-VERSION := 0.1.1
+VERSION := $(strip $(shell cat VERSION))
 BUILD_DIR := build
 DIST_DIR := dist
 HOST_CC ?= cc
 HOST_CFLAGS ?= -O2 -g -std=c11 -Wall -Wextra -Wpedantic -Werror
-CPPFLAGS := -Iinclude -Ithird_party
+CPPFLAGS := -Iinclude -Ithird_party -DKUAL_NEXT_VERSION='"$(VERSION)"'
 CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
 HOST_SOURCES := $(CORE_SOURCES) third_party/yxml.c src/main.c
 HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
@@ -33,12 +33,12 @@ all: host
 
 host: $(HOST_BINARY)
 
-$(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h third_party/yxml.h
+$(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h third_party/yxml.h VERSION
 	mkdir -p $(@D)
 	$(HOST_CC) $(CPPFLAGS) $(HOST_CFLAGS) -DKUAL_HOST -o $@ $(HOST_SOURCES)
 
 test: $(HOST_BINARY)
-	sh ./tests/run.sh $(HOST_BINARY)
+	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	sh ./tests/check-fonts.sh
 
 toolchain:
@@ -53,7 +53,7 @@ $(FBINK_FEATURE_STAMP): $(FBINK_DIR)/Makefile $(FBINK_DIR)/fbink.h
 $(FBINK_LIB): $(FBINK_FEATURE_STAMP)
 	test -f $@
 
-$(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h third_party/yxml.h $(FBINK_FEATURE_STAMP)
+$(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h third_party/yxml.h VERSION $(FBINK_FEATURE_STAMP)
 	mkdir -p $(@D)
 	$(DEVICE_CC) $(CPPFLAGS) -I$(FBINK_DIR) $(DEVICE_CFLAGS) -c -o $@ $<
 
