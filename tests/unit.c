@@ -1,8 +1,13 @@
+#define _POSIX_C_SOURCE 200809L
 #include "kual.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static KualEntry *find_entry(KualEntry *parent, const char *name) {
   for (size_t i = 0; i < parent->child_count; i++) {
@@ -16,8 +21,36 @@ static KualEntry *find_entry(KualEntry *parent, const char *name) {
   return NULL;
 }
 
+static void test_stderr_redirect(void) {
+  char path[] = "/tmp/kual-next-stderr.XXXXXX";
+  int fd = mkstemp(path);
+  assert(fd >= 0);
+  assert(write(fd, "before\n", 7) == 7);
+  close(fd);
+
+  pid_t pid = fork();
+  assert(pid >= 0);
+  if (pid == 0) {
+    assert(kual_redirect_stderr(path) == 0);
+    dprintf(STDERR_FILENO, "after\n");
+    _exit(0);
+  }
+  int status;
+  assert(waitpid(pid, &status, 0) == pid);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
+  fd = open(path, O_RDONLY);
+  assert(fd >= 0);
+  char contents[32] = {0};
+  assert(read(fd, contents, sizeof(contents) - 1U) == 13);
+  close(fd);
+  unlink(path);
+  assert(!strcmp(contents, "before\nafter\n"));
+}
+
 int main(int argc, char **argv) {
   assert(argc == 2);
+  test_stderr_redirect();
   KualMenu menu;
   KualErrors errors = {0};
   kual_menu_init(&menu, argv[1], "KindlePaperWhite5");

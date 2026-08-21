@@ -895,9 +895,15 @@ static int run_background(UI *ui, KualEntry *entry) {
   char *command = action_command(entry);
   pid_t pid = fork();
   if (pid == 0) {
-    if (chdir(entry->working_dir) != 0)
+    (void)kual_redirect_stderr(KUAL_DEFAULT_LOG);
+    if (chdir(entry->working_dir) != 0) {
+      dprintf(STDERR_FILENO, "cannot chdir to %s: %s\n", entry->working_dir,
+              strerror(errno));
       _exit(126);
+    }
     execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+    dprintf(STDERR_FILENO, "cannot execute '%s': %s\n", command,
+            strerror(errno));
     _exit(127);
   }
   if (pid < 0) {
@@ -925,15 +931,16 @@ static int exec_and_exit(UI *ui, KualEntry *entry) {
        *cwd = kual_xstrdup(entry->working_dir);
   ui_cleanup(ui);
   statusbar_restore_if_owned();
+  (void)kual_redirect_stderr(KUAL_DEFAULT_LOG);
   if (chdir(cwd) != 0) {
-    kual_log("cannot chdir to %s: %s", cwd, strerror(errno));
+    dprintf(STDERR_FILENO, "cannot chdir to %s: %s\n", cwd, strerror(errno));
     free(cwd);
     free(command);
     return 126;
   }
   free(cwd);
   execl("/bin/sh", "sh", "-c", command, (char *)NULL);
-  kual_log("cannot execute '%s': %s", command, strerror(errno));
+  dprintf(STDERR_FILENO, "cannot execute '%s': %s\n", command, strerror(errno));
   free(command);
   return 127;
 }

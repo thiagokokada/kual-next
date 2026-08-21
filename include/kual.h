@@ -83,6 +83,7 @@ char *kual_join_path(const char *a, const char *b);
 char *kual_dirname(const char *path);
 char *kual_read_file(const char *path, size_t *size_out);
 void kual_log(const char *format, ...);
+int kual_redirect_stderr(const char *path);
 
 void kual_config_init(KualConfig *config);
 void kual_config_free(KualConfig *config);

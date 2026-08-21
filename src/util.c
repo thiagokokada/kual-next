@@ -2,11 +2,13 @@
 #include "kual.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 void *kual_xcalloc(size_t count, size_t size) {
   if (size && count > SIZE_MAX / size)
@@ -103,6 +105,21 @@ void kual_log(const char *format, ...) {
   va_end(ap);
   fputc('\n', f);
   fclose(f);
+}
+
+int kual_redirect_stderr(const char *path) {
+  int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+  if (fd < 0)
+    return -1;
+  if (dup2(fd, STDERR_FILENO) < 0) {
+    int saved = errno;
+    close(fd);
+    errno = saved;
+    return -1;
+  }
+  if (fd > STDERR_FILENO)
+    close(fd);
+  return 0;
 }
 
 void kual_errors_add(KualErrors *errors, const char *source, const char *format,
