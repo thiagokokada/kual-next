@@ -61,6 +61,7 @@
         git
         gnumake
         gnutar
+        openssh
         patch
         perl
         pkg-config

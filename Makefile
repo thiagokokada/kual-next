@@ -6,6 +6,8 @@ BUILD_DIR := build
 DIST_DIR := dist
 HOST_CC ?= cc
 HOST_CFLAGS ?= -O2 -g -std=c11 -Wall -Wextra -Wpedantic -Werror
+SSH ?= ssh
+SCP ?= scp
 CPPFLAGS := -Iinclude -Ithird_party -DKUAL_NEXT_VERSION='"$(VERSION)"'
 CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
 HOST_SOURCES := $(CORE_SOURCES) third_party/yxml.c src/main.c
@@ -27,8 +29,9 @@ DEVICE_SOURCES := $(CORE_SOURCES) src/main.c src/ui_fbink.c
 DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) \
 	$(BUILD_DIR)/kindle/yxml.o
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
+PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
 
-.PHONY: all host test toolchain kindle check package clean
+.PHONY: all host test toolchain kindle check package deploy clean
 all: host
 
 host: $(HOST_BINARY)
@@ -40,6 +43,7 @@ $(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h third_party/yx
 test: $(HOST_BINARY)
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	sh ./tests/check-fonts.sh
+	sh ./tests/check-deploy.sh
 
 toolchain:
 	KUAL_TC_ROOT="$(TC_ROOT)" $(TOOLCHAIN_FHS) -c 'exec sh ./scripts/bootstrap-toolchain.sh'
@@ -87,7 +91,12 @@ package: check
 	cp "$(FBINK_DIR)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
-	cd "$(BUILD_DIR)/package" && find . -type f -print | LC_ALL=C sort | zip -X -q "$(CURDIR)/$(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip" -@
+	cd "$(BUILD_DIR)/package" && find . -type f -print | LC_ALL=C sort | zip -X -q "$(CURDIR)/$(PACKAGE)" -@
+
+deploy:
+	@test -n "$(KINDLE_HOST)" || { echo "KINDLE_HOST is required (for example: make deploy KINDLE_HOST=root@kindle)" >&2; exit 2; }
+	$(MAKE) package
+	SSH="$(SSH)" SCP="$(SCP)" sh ./scripts/deploy-kindle.sh "$(KINDLE_HOST)" "$(PACKAGE)"
 
 clean:
 	@if [ -f "$(FBINK_DIR)/Makefile" ]; then PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib; fi

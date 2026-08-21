@@ -18,6 +18,8 @@ framework.
 - `include/kual.h` contains shared project types and interfaces.
 - `tests/fixtures/` contains representative KUAL extensions.
 - `assets/` contains the SH Integration scriptlet and bundled Noto fonts.
+- `scripts/deploy-kindle.sh` performs checked SSH package deployments for the
+  `make deploy` target; it must not contain a default device hostname.
 - `third_party/FBInk` is a pinned recursive Git submodule. Do not replace it
   with a path outside this repository or modify its upstream sources as part
   of normal project work.

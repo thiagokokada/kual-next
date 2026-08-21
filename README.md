@@ -56,6 +56,18 @@ Validate an extension tree without opening a framebuffer:
 build/host/kual-next --validate --extensions /path/to/extensions --model KindlePaperWhite5
 ```
 
+Build and deploy the package over SSH:
+
+```sh
+nix develop
+make deploy KINDLE_HOST=root@your-kindle
+```
+
+`KINDLE_HOST` is required and is never given a repository default. The target
+honors the `SSH` and `SCP` environment variables, verifies the uploaded archive,
+and refuses to overwrite KUAL Next while it is running. Quit the launcher before
+deploying, then open it again through the Kindle scriptlet UI.
+
 ## Kindle cross-build
 
 The one-time toolchain bootstrap downloads and builds
