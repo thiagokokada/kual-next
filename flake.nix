@@ -9,18 +9,63 @@
     };
   };
 
-  outputs = { self, nixpkgs, koxtoolchain }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      koxtoolchain,
+    }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       toolchainPackages = with pkgs; [
-        autoconf269 automake bash binutils bison bzip2 coreutils curl file flex
-        gawk gcc gettext git glibc.static gnumake gperf gzip help2man libtool
-        ncurses patch perl pkg-config python3 rsync texinfo unzip wget which xz
+        autoconf269
+        automake
+        bash
+        binutils
+        bison
+        bzip2
+        coreutils
+        curl
+        file
+        flex
+        gawk
+        gcc
+        gettext
+        git
+        glibc.static
+        gnumake
+        gperf
+        gzip
+        help2man
+        libtool
+        ncurses
+        patch
+        perl
+        pkg-config
+        python3
+        rsync
+        texinfo
+        unzip
+        wget
+        which
+        xz
         zip
       ];
       devPackages = with pkgs; [
-        bash file fontconfig gcc git gnumake gnutar patch perl pkg-config unzip zip
+        bash
+        clang-tools
+        file
+        fontconfig
+        gcc
+        git
+        gnumake
+        gnutar
+        patch
+        perl
+        pkg-config
+        unzip
+        zip
       ];
       toolchainFhs = pkgs.buildFHSEnv {
         name = "kual-toolchain-fhs";
@@ -31,7 +76,8 @@
         '';
         runScript = "bash";
       };
-    in {
+    in
+    {
       packages.${system}.toolchain-fhs = toolchainFhs;
 
       devShells.${system}.default = pkgs.mkShell {
