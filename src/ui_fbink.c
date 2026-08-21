@@ -23,6 +23,7 @@
 #define MAX_INPUTS 16
 #define MAX_NAV_DEPTH (KUAL_MAX_DEPTH + 1)
 #define KUAL_PAGE_ROWS 10U
+#define FRAMEBUFFER_WATCHDOG_MS 250L
 
 typedef struct {
   int fd;
@@ -51,6 +52,9 @@ typedef struct {
   bool screen_saver_active;
   bool resume_redraw_pending;
   struct timespec resume_redraw_at;
+  bool framebuffer_watchdog_pending;
+  uint64_t framebuffer_signature;
+  struct timespec framebuffer_watchdog_at;
   KualEntry *nav[MAX_NAV_DEPTH];
   size_t depth;
   size_t page;
@@ -639,6 +643,55 @@ static void breadcrumb(UI *ui, char *buffer, size_t size) {
   }
 }
 
+static bool framebuffer_signature(UI *ui, uint64_t *signature) {
+  unsigned int outer_x = ui->gap / 2U;
+  unsigned int right_x = ui->state.view_width - outer_x - ui->side_w;
+  unsigned int center_y = ui->list_y + ui->list_h / 2U;
+  unsigned int left_center = outer_x + ui->side_w / 2U;
+  unsigned int right_center = right_x + ui->side_w / 2U;
+  const uint16_t samples[][2] = {
+      {(uint16_t)outer_x, (uint16_t)center_y},
+      {(uint16_t)(outer_x + ui->side_w - 1U), (uint16_t)center_y},
+      {(uint16_t)right_x, (uint16_t)center_y},
+      {(uint16_t)(right_x + ui->side_w - 1U), (uint16_t)center_y},
+      {(uint16_t)left_center, (uint16_t)ui->list_y},
+      {(uint16_t)left_center, (uint16_t)(ui->list_y + ui->list_h - 1U)},
+      {(uint16_t)left_center, (uint16_t)center_y},
+      {(uint16_t)right_center, (uint16_t)center_y},
+  };
+  uint64_t hash = UINT64_C(1469598103934665603);
+  for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
+    uint8_t rgba[4];
+    if (fbink_get_pixel(ui->fbfd, samples[i][0], samples[i][1], &rgba[0],
+                        &rgba[1], &rgba[2], &rgba[3]) != 0)
+      return false;
+    for (size_t channel = 0; channel < sizeof(rgba); channel++) {
+      hash ^= rgba[channel];
+      hash *= UINT64_C(1099511628211);
+    }
+  }
+  *signature = hash;
+  return true;
+}
+
+static void framebuffer_watchdog_schedule(UI *ui) {
+  clock_gettime(CLOCK_MONOTONIC, &ui->framebuffer_watchdog_at);
+  ui->framebuffer_watchdog_at.tv_nsec += FRAMEBUFFER_WATCHDOG_MS * 1000000L;
+  if (ui->framebuffer_watchdog_at.tv_nsec >= 1000000000L) {
+    ui->framebuffer_watchdog_at.tv_sec++;
+    ui->framebuffer_watchdog_at.tv_nsec -= 1000000000L;
+  }
+  ui->framebuffer_watchdog_pending = true;
+}
+
+static void framebuffer_watchdog_arm(UI *ui) {
+  if (!framebuffer_signature(ui, &ui->framebuffer_signature)) {
+    ui->framebuffer_watchdog_pending = false;
+    return;
+  }
+  framebuffer_watchdog_schedule(ui);
+}
+
 static void ui_draw(UI *ui) {
   FBInkConfig clear = ui->draw_cfg;
   clear.bg_color = BG_WHITE;
@@ -712,6 +765,8 @@ static void ui_draw(UI *ui) {
   refresh.no_refresh = false;
   refresh.wfm_mode = WFM_GC16;
   (void)fbink_refresh(ui->fbfd, 0, 0, 0, 0, &refresh);
+  if (!ui->screen_saver_active)
+    framebuffer_watchdog_arm(ui);
 }
 
 static void ui_redraw_after_resume(UI *ui) {
@@ -735,17 +790,53 @@ static void schedule_resume_redraw(UI *ui, long delay_ms) {
   ui->resume_redraw_pending = true;
 }
 
-static int resume_redraw_timeout(const UI *ui) {
-  if (!ui->resume_redraw_pending)
-    return -1;
+static int deadline_timeout(const struct timespec *deadline) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
-  long seconds = ui->resume_redraw_at.tv_sec - now.tv_sec;
-  long nanoseconds = ui->resume_redraw_at.tv_nsec - now.tv_nsec;
+  long seconds = deadline->tv_sec - now.tv_sec;
+  long nanoseconds = deadline->tv_nsec - now.tv_nsec;
   long milliseconds = seconds * 1000L + nanoseconds / 1000000L;
   if (nanoseconds > 0 && nanoseconds % 1000000L)
     milliseconds++;
   return milliseconds > 0 ? (int)milliseconds : 0;
+}
+
+static int resume_redraw_timeout(const UI *ui) {
+  return ui->resume_redraw_pending ? deadline_timeout(&ui->resume_redraw_at)
+                                   : -1;
+}
+
+static int framebuffer_watchdog_timeout(const UI *ui) {
+  return ui->framebuffer_watchdog_pending
+             ? deadline_timeout(&ui->framebuffer_watchdog_at)
+             : -1;
+}
+
+static int ui_poll_timeout(const UI *ui) {
+  int resume = resume_redraw_timeout(ui);
+  int watchdog = framebuffer_watchdog_timeout(ui);
+  if (resume < 0)
+    return watchdog;
+  if (watchdog < 0)
+    return resume;
+  return resume < watchdog ? resume : watchdog;
+}
+
+static void finish_framebuffer_watchdog(UI *ui) {
+  if (ui->screen_saver_active) {
+    ui->framebuffer_watchdog_pending = false;
+    return;
+  }
+  uint64_t current;
+  if (!framebuffer_signature(ui, &current)) {
+    ui->framebuffer_watchdog_pending = false;
+    return;
+  }
+  if (current != ui->framebuffer_signature) {
+    kual_log("Kindle framework overwrote the framebuffer; redrawing");
+    ui_draw(ui);
+  } else
+    framebuffer_watchdog_schedule(ui);
 }
 
 static void finish_resume_redraw(UI *ui) {
@@ -753,20 +844,20 @@ static void finish_resume_redraw(UI *ui) {
   ui_redraw_after_resume(ui);
   for (size_t i = 0; i < ui->input_count; i++)
     input_discard(&ui->inputs[i]);
-  if (ui_inputs_grab(ui, true))
+  if (ui_inputs_grab(ui, true)) {
     ui->screen_saver_active = false;
-  else
+    framebuffer_watchdog_arm(ui);
+  } else
     schedule_resume_redraw(ui, 1000L);
 }
 
 static void handle_power_event(UI *ui, const char *line) {
-  if (!strncmp(line, "goingToScreenSaver", 18)) {
+  if (kual_power_event_is_lock(line)) {
     if (!ui->screen_saver_active)
       ui_inputs_grab(ui, false);
     ui->screen_saver_active = true;
     ui->resume_redraw_pending = false;
-  } else if (!strncmp(line, "outOfScreenSaver", 16)) {
-    ui->screen_saver_active = true;
+    ui->framebuffer_watchdog_pending = false;
   } else if (kual_power_event_is_unlock(line, ui->screen_saver_active)) {
     ui_redraw_after_resume(ui);
     schedule_resume_redraw(ui, 3000L);
@@ -1122,8 +1213,7 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
       fds[0] = (struct pollfd){ui.power_fd, POLLIN, 0};
     for (size_t i = 0; i < ui.input_count; i++)
       fds[input_offset + i] = (struct pollfd){ui.inputs[i].fd, POLLIN, 0};
-    int ready =
-        poll(fds, input_offset + ui.input_count, resume_redraw_timeout(&ui));
+    int ready = poll(fds, input_offset + ui.input_count, ui_poll_timeout(&ui));
     if (ready < 0) {
       if (errno == EINTR)
         continue;
@@ -1150,6 +1240,9 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
       }
     if (ui.resume_redraw_pending && resume_redraw_timeout(&ui) == 0)
       finish_resume_redraw(&ui);
+    if (ui.framebuffer_watchdog_pending &&
+        framebuffer_watchdog_timeout(&ui) == 0)
+      finish_framebuffer_watchdog(&ui);
   }
   ui_cleanup(&ui);
   return 0;

@@ -54,6 +54,10 @@ static void test_privilege_indicator(void) {
 }
 
 static void test_power_event_unlock(void) {
+  assert(kual_power_event_is_lock("goingToScreenSaver"));
+  assert(!kual_power_event_is_lock("outOfScreenSaver"));
+  assert(!kual_power_event_is_lock("exitingScreenSaver"));
+  assert(!kual_power_event_is_lock(NULL));
   assert(!kual_power_event_is_unlock("exitingScreenSaver", false));
   assert(kual_power_event_is_unlock("exitingScreenSaver", true));
   assert(!kual_power_event_is_unlock("outOfScreenSaver", true));

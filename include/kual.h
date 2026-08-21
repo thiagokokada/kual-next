@@ -86,6 +86,7 @@ char *kual_read_file(const char *path, size_t *size_out);
 void kual_log(const char *format, ...);
 int kual_redirect_stderr(const char *path);
 const char *kual_privilege_indicator(bool is_root);
+bool kual_power_event_is_lock(const char *event);
 bool kual_power_event_is_unlock(const char *event, bool screen_saver_active);
 
 void kual_config_init(KualConfig *config);
