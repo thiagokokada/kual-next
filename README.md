@@ -123,6 +123,9 @@ nix develop
 make device-ui-test KINDLE_HOST=root@your-kindle
 ```
 
+Optional SSH client flags can be supplied separately, for example
+`SSH_ARGS='-F /dev/null' SCP_ARGS='-F /dev/null'`.
+
 The target stages the current device binary and test extensions under
 `/tmp/kual-next-ui-test`, then opens KUAL Next with that isolated extension
 tree. Keep the SSH command attached while testing and quit the launcher when

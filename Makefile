@@ -8,6 +8,8 @@ HOST_CC ?= cc
 HOST_CFLAGS ?= -O2 -g -std=c11 -Wall -Wextra -Wpedantic -Werror
 SSH ?= ssh
 SCP ?= scp
+SSH_ARGS ?=
+SCP_ARGS ?=
 CPPFLAGS := -Iinclude -Ithird_party -DKUAL_NEXT_VERSION='"$(VERSION)"'
 CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
 HOST_SOURCES := $(CORE_SOURCES) third_party/yxml.c src/main.c
@@ -110,7 +112,7 @@ deploy:
 
 device-ui-test: kindle
 	@test -n "$(KINDLE_HOST)" || { echo "KINDLE_HOST is required (for example: make device-ui-test KINDLE_HOST=root@kindle)" >&2; exit 2; }
-	SSH="$(SSH)" SCP="$(SCP)" sh ./scripts/test-kindle-ui.sh "$(KINDLE_HOST)"
+	SSH="$(SSH)" SCP="$(SCP)" SSH_ARGS="$(SSH_ARGS)" SCP_ARGS="$(SCP_ARGS)" sh ./scripts/test-kindle-ui.sh "$(KINDLE_HOST)"
 
 clean:
 	@if [ -f "$(FBINK_DIR)/Makefile" ]; then PATH="$(TC_BIN):$$PATH" $(MAKE) -C "$(FBINK_DIR)" cleanstaticlib; fi

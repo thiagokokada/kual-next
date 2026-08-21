@@ -5,6 +5,8 @@ set -eu
 host=${1:-}
 ssh_bin=${SSH:-ssh}
 scp_bin=${SCP:-scp}
+ssh_args=${SSH_ARGS:-}
+scp_args=${SCP_ARGS:-}
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 binary=${KUAL_TEST_BINARY:-$root/build/kindle/kual-next}
 supervisor=$root/assets/KUAL\ Next.sh
@@ -13,6 +15,14 @@ remote_root=/tmp/kual-next-ui-test
 remote_archive=/tmp/kual-next-ui-test.zip
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
+
+run_ssh() {
+	"$ssh_bin" $ssh_args "$@"
+}
+
+run_scp() {
+	"$scp_bin" $scp_args "$@"
+}
 
 if [ -z "$host" ]; then
 	printf 'Usage: %s USER@HOST\n' "$0" >&2
@@ -30,7 +40,7 @@ if [ ! -x "$binary" ]; then
 fi
 
 running=$(
-	"$ssh_bin" "$host" \
+	run_ssh "$host" \
 		'pidof kual-next 2>/dev/null || true'
 )
 if [ -n "$running" ]; then
@@ -49,9 +59,9 @@ cp -R "$fixture" "$stage/extensions"
 
 archive=$tmpdir/kual-next-ui-test.zip
 local_hash=$(sha256sum "$archive" | awk '{print $1}')
-"$scp_bin" "$archive" "${host}:${remote_archive}"
+run_scp "$archive" "${host}:${remote_archive}"
 remote_checksum=$(
-	"$ssh_bin" "$host" "sha256sum '$remote_archive'"
+	run_ssh "$host" "sha256sum '$remote_archive'"
 )
 remote_hash=${remote_checksum%% *}
 if [ "$local_hash" != "$remote_hash" ]; then
@@ -64,7 +74,7 @@ printf 'Opening temporary KUAL Next UI test on %s.\n' "$host"
 printf 'Quit the launcher to end this command and remove %s.\n' "$remote_root"
 printf 'Action log: /var/tmp/kual-next-ui-test.log\n'
 
-"$ssh_bin" "$host" /bin/sh -s <<'REMOTE'
+run_ssh "$host" /bin/sh -s <<'REMOTE'
 set -eu
 
 root=/tmp/kual-next-ui-test
