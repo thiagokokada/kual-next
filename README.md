@@ -116,8 +116,9 @@ deploying, then open it again through the Kindle scriptlet UI.
 
 ## Kindle cross-build
 
-The one-time toolchain setup downloads koxtoolchain's checksum-verified,
-prebuilt `kindlehf` target into `.toolchains/`.
+The toolchain setup downloads a prebuilt
+[koxtoolchain](https://github.com/koreader/koxtoolchain), `kindlehf` target
+into `.toolchains/`.
 
 ```sh
 nix develop
@@ -127,8 +128,7 @@ make package
 ```
 
 The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
-at the Kindle USB storage root so that `documents/KUAL Next.sh` and
-`kual-next/bin/kual-next` land under `/mnt/us`. The scriptlet metadata uses the
+at the Kindle USB storage root for testing. The scriptlet metadata uses the
 bundled `kual-next/icon.png` as its Kindle library cover.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
