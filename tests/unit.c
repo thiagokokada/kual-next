@@ -53,10 +53,18 @@ static void test_privilege_indicator(void) {
   assert(!strcmp(kual_privilege_indicator(false), "%"));
 }
 
+static void test_power_event_unlock(void) {
+  assert(!kual_power_event_is_unlock("exitingScreenSaver", false));
+  assert(kual_power_event_is_unlock("exitingScreenSaver", true));
+  assert(!kual_power_event_is_unlock("outOfScreenSaver", true));
+  assert(!kual_power_event_is_unlock(NULL, true));
+}
+
 int main(int argc, char **argv) {
   assert(argc == 2);
   test_stderr_redirect();
   test_privilege_indicator();
+  test_power_event_unlock();
   KualMenu menu;
   KualErrors errors = {0};
   kual_menu_init(&menu, argv[1], "KindlePaperWhite5");

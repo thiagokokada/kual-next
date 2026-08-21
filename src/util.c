@@ -126,6 +126,11 @@ const char *kual_privilege_indicator(bool is_root) {
   return is_root ? "#" : "%";
 }
 
+bool kual_power_event_is_unlock(const char *event, bool screen_saver_active) {
+  return screen_saver_active && event &&
+         !strncmp(event, "exitingScreenSaver", 18);
+}
+
 void kual_errors_add(KualErrors *errors, const char *source, const char *format,
                      ...) {
   if (!errors || !format)

@@ -765,7 +765,7 @@ static void handle_power_event(UI *ui, const char *line) {
     ui->resume_redraw_pending = false;
   } else if (!strncmp(line, "outOfScreenSaver", 16)) {
     ui->screen_saver_active = true;
-  } else if (!strncmp(line, "exitingScreenSaver", 18)) {
+  } else if (kual_power_event_is_unlock(line, ui->screen_saver_active)) {
     ui_redraw_after_resume(ui);
     schedule_resume_redraw(ui, 3000L);
   }
