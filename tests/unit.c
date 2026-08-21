@@ -87,6 +87,13 @@ int main(int argc, char **argv) {
   assert(unknown && unknown->internal_kind == KUAL_INTERNAL_NONE);
   assert(!unknown->internal);
 
+  KualEntry *shared = find_entry(&menu.root, "Shared");
+  assert(shared && shared->collated);
+  assert(shared->child_count == 3);
+  assert(find_entry(shared, "First"));
+  assert(find_entry(shared, "Second"));
+  assert(find_entry(shared, "Third"));
+
   kual_menu_free(&menu);
   kual_errors_free(&errors);
   puts("host unit tests passed");

@@ -490,17 +490,21 @@ static unsigned int measure_text(UI *ui, const char *text, unsigned int size,
 static void print_entry_label(UI *ui, const KualEntry *entry, unsigned int x,
                               unsigned int y, unsigned int width,
                               unsigned int height, unsigned int size) {
+  size_t label_size = strlen(entry->name) + (entry->collated ? 2U : 1U);
+  char *label = kual_xcalloc(label_size, 1U);
+  snprintf(label, label_size, "%s%s", entry->name, entry->collated ? "+" : "");
   if (!ui->opentype_ready || !ui->symbols_ready) {
     char fallback[768];
     snprintf(fallback, sizeof(fallback), "%s%s%s", entry->checked ? "[x] " : "",
-             entry->name, entry->child_count ? " v" : "");
+             label, entry->child_count ? " v" : "");
     print_area(ui, fallback, x, y, width, height, size, true);
+    free(label);
     return;
   }
 
   unsigned int check_w =
       entry->checked ? measure_text(ui, "✓", size, &ui->symbol_cfg) : 0U;
-  unsigned int text_w = measure_text(ui, entry->name, size, &ui->text_cfg);
+  unsigned int text_w = measure_text(ui, label, size, &ui->text_cfg);
   unsigned int down_w =
       entry->child_count ? measure_text(ui, "▽", size, &ui->symbol_cfg) : 0U;
   unsigned int spacing = size / 4U;
@@ -517,26 +521,29 @@ static void print_entry_label(UI *ui, const KualEntry *entry, unsigned int x,
                       &ui->symbol_cfg);
       cursor += left_w;
     }
-    print_area_font(ui, entry->name, cursor, y, text_w + 1U, height, size,
-                    false, &ui->text_cfg);
+    print_area_font(ui, label, cursor, y, text_w + 1U, height, size, false,
+                    &ui->text_cfg);
     cursor += text_w;
     if (down_w)
       print_area_font(ui, "▽", cursor + spacing, y, down_w + 1U, height, size,
                       false, &ui->symbol_cfg);
+    free(label);
     return;
   }
 
   if (left_w + right_w >= width) {
-    print_area(ui, entry->name, x, y, width, height, size, true);
+    print_area(ui, label, x, y, width, height, size, true);
+    free(label);
     return;
   }
   if (check_w)
     print_area_font(ui, "✓", x, y, left_w, height, size, true, &ui->symbol_cfg);
-  print_area(ui, entry->name, x + left_w, y, width - left_w - right_w, height,
-             size, true);
+  print_area(ui, label, x + left_w, y, width - left_w - right_w, height, size,
+             true);
   if (down_w)
     print_area_font(ui, "▽", x + width - right_w, y, right_w, height, size,
                     true, &ui->symbol_cfg);
+  free(label);
 }
 
 static void line_gray(UI *ui, unsigned int x, unsigned int y,

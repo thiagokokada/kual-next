@@ -42,6 +42,9 @@
         {"name": "Empty breadcrumb", "action": ":", "internal": "breadcrumb"},
         {"name": "Status message", "action": ":", "internal": "status Working"},
         {"name": "Unknown internal", "action": ":", "internal": "notice Ignored"},
+        {"name": "Shared", "items": [{"name": "First", "action": ":"}]},
+        {"name": "Shared", "items": [{"name": "Second", "action": ":"}]},
+        {"name": "Shared", "items": [{"name": "Third", "action": ":"}]},
         {"name": "Invisible", "action": ":", "hidden": true}
       ]
     }

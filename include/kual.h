@@ -48,6 +48,7 @@ typedef struct KualEntry {
   bool show_status;
   bool show_date;
   bool hidden;
+  bool collated;
   struct KualEntry *children;
   size_t child_count;
   size_t child_cap;

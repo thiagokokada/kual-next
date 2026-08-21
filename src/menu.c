@@ -722,9 +722,11 @@ static void collate_entries(KualEntry *parent) {
     KualEntry *a = &parent->children[i];
     if (!a->child_count)
       continue;
+    bool merged = false;
     for (size_t j = i + 1; j < parent->child_count;) {
       KualEntry *b = &parent->children[j];
       if (b->child_count && !strcmp(a->name, b->name)) {
+        merged = true;
         for (size_t k = 0; k < b->child_count; k++) {
           *add_child(a) = b->children[k];
           memset(&b->children[k], 0, sizeof(b->children[k]));
@@ -735,6 +737,7 @@ static void collate_entries(KualEntry *parent) {
       } else
         j++;
     }
+    a->collated = merged;
     collate_entries(a);
   }
 }
@@ -813,7 +816,8 @@ void kual_menu_add_errors(KualMenu *menu, const KualErrors *errors) {
 static void print_entry(const KualEntry *entry, FILE *out, int depth) {
   for (int i = 0; i < depth; i++)
     fputs("  ", out);
-  fprintf(out, "%s%s", entry->child_count ? "> " : "- ", entry->name);
+  fprintf(out, "%s%s%s", entry->child_count ? "> " : "- ", entry->name,
+          entry->collated ? "+" : "");
   if (entry->action)
     fprintf(out, " => %s%s%s", entry->action,
             entry->params && *entry->params ? " " : "",

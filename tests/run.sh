@@ -18,6 +18,18 @@ grep -q 'Model match => :' "$tmpdir/tree"
 grep -q 'Model mismatch => :' "$tmpdir/tree"
 grep -q 'Configured => :' "$tmpdir/tree"
 ! grep -q Invisible "$tmpdir/tree"
+test "$(grep -c '> Shared+$' "$tmpdir/tree")" -eq 1
+grep -q -- '- First => :' "$tmpdir/tree"
+grep -q -- '- Second => :' "$tmpdir/tree"
+grep -q -- '- Third => :' "$tmpdir/tree"
+
+cp -R "$fixture" "$tmpdir/no-collation"
+printf '%s\n' 'KUAL_collate="false"' > "$tmpdir/no-collation/KUAL.cfg"
+"$binary" --validate --extensions "$tmpdir/no-collation" \
+    > "$tmpdir/no-collation.tree" 2> "$tmpdir/no-collation.errors"
+test ! -s "$tmpdir/no-collation.errors"
+test "$(grep -c '> Shared$' "$tmpdir/no-collation.tree")" -eq 3
+! grep -q '> Shared+$' "$tmpdir/no-collation.tree"
 
 mkdir -p "$tmpdir/xml/extensions/proper"
 printf '%s\n' '<?xml version="1.0"?>' \
