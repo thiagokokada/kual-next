@@ -45,6 +45,7 @@ test: $(HOST_BINARY)
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
 	sh ./tests/check-toolchain.sh
+	actionlint
 
 toolchain:
 	KUAL_TC_ROOT="$(TC_ROOT)" sh ./scripts/install-prebuilt-toolchain.sh

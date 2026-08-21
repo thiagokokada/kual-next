@@ -53,6 +53,7 @@
         zip
       ];
       devPackages = with pkgs; [
+        actionlint
         bash
         clang-tools
         curl
