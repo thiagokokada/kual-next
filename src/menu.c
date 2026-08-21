@@ -494,6 +494,30 @@ static int parse_item(KualMenu *menu, KualEntry *parent, const char *json,
                       const char *cwd, const char *id, const char *source,
                       KualErrors *errors);
 
+static void parse_internal(KualEntry *entry, bool submenu) {
+  if (!entry->internal)
+    return;
+  const char *message = NULL;
+  if (!strcmp(entry->internal, "breadcrumb")) {
+    entry->internal_kind = KUAL_INTERNAL_BREADCRUMB;
+    message = "";
+  } else if (!strncmp(entry->internal, "breadcrumb ", 11)) {
+    entry->internal_kind = KUAL_INTERNAL_BREADCRUMB;
+    message = entry->internal + 11;
+  } else if (!strcmp(entry->internal, "status")) {
+    entry->internal_kind = KUAL_INTERNAL_STATUS;
+    message = "";
+  } else if (!strncmp(entry->internal, "status ", 7)) {
+    entry->internal_kind = KUAL_INTERNAL_STATUS;
+    message = entry->internal + 7;
+  }
+  char *parsed = !submenu && message ? kual_xstrdup(message) : NULL;
+  if (submenu)
+    entry->internal_kind = KUAL_INTERNAL_NONE;
+  free(entry->internal);
+  entry->internal = parsed;
+}
+
 static int parse_array(KualMenu *menu, KualEntry *parent, const char *json,
                        const jsmntok_t *tokens, int count, int index, int depth,
                        const char *cwd, const char *id, const char *source,
@@ -559,6 +583,7 @@ static int parse_item(KualMenu *menu, KualEntry *parent, const char *json,
       items = value;
     cursor = tok_skip(tokens, count, cursor);
   }
+  parse_internal(&parsed, items != NULL);
   if (!parsed.name || (!parsed.action && !items)) {
     kual_errors_add(errors, source,
                     "menu entry is missing name or action/items");

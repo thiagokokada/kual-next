@@ -38,6 +38,21 @@ int main(int argc, char **argv) {
 
   KualEntry *beta = find_entry(&menu.root, "Beta action");
   assert(beta && beta->priority == -5);
+  assert(beta->internal_kind == KUAL_INTERNAL_STATUS);
+  assert(!strcmp(beta->internal, "Ready"));
+
+  KualEntry *breadcrumb = find_entry(&menu.root, "Breadcrumb message");
+  assert(breadcrumb && breadcrumb->internal_kind == KUAL_INTERNAL_BREADCRUMB);
+  assert(!strcmp(breadcrumb->internal, "Ready"));
+  KualEntry *empty = find_entry(&menu.root, "Empty breadcrumb");
+  assert(empty && empty->internal_kind == KUAL_INTERNAL_BREADCRUMB);
+  assert(!strcmp(empty->internal, ""));
+  KualEntry *status = find_entry(&menu.root, "Status message");
+  assert(status && status->internal_kind == KUAL_INTERNAL_STATUS);
+  assert(!strcmp(status->internal, "Working"));
+  KualEntry *unknown = find_entry(&menu.root, "Unknown internal");
+  assert(unknown && unknown->internal_kind == KUAL_INTERNAL_NONE);
+  assert(!unknown->internal);
 
   kual_menu_free(&menu);
   kual_errors_free(&errors);

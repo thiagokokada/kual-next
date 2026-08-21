@@ -23,12 +23,19 @@ typedef struct {
   size_t cap;
 } KualConfig;
 
+typedef enum {
+  KUAL_INTERNAL_NONE,
+  KUAL_INTERNAL_BREADCRUMB,
+  KUAL_INTERNAL_STATUS,
+} KualInternalKind;
+
 typedef struct KualEntry {
   char *name;
   char *action;
   char *params;
   char *condition;
   char *internal;
+  KualInternalKind internal_kind;
   char *working_dir;
   char *extension_id;
   char *source;

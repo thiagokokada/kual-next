@@ -38,6 +38,10 @@
 		  "date": "true",
 		  "hidden": "false"
 		},
+        {"name": "Breadcrumb message", "action": ":", "internal": "breadcrumb Ready"},
+        {"name": "Empty breadcrumb", "action": ":", "internal": "breadcrumb"},
+        {"name": "Status message", "action": ":", "internal": "status Working"},
+        {"name": "Unknown internal", "action": ":", "internal": "notice Ignored"},
         {"name": "Invisible", "action": ":", "hidden": true}
       ]
     }

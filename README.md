@@ -72,7 +72,6 @@ scope.
 | Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Actions run normally, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
-| Internal messages | Breadcrumb and status internal messages are currently both displayed in the bottom status area, rather than in separate areas as in KUAL. |
 | Input | Touch, Home/Menu, back, next, and a small set of page-key aliases are supported. KUAL's numeric/QWERTY item shortcuts and Java focus navigation are not. |
 | Configuration | Discovery depth, path exclusion, symlink following, collation, and `ABC`, `ABC!`, and `123` sorting are supported. UI settings such as `KUAL_no_show_status` and the self-management menu are not. |
 | Parsing | `config.xml` is handled by the small, non-validating yxml parser. XML syntax, nesting, entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |

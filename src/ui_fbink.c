@@ -57,6 +57,7 @@ typedef struct {
   unsigned int top_h, status_h, side_w, gap;
   unsigned int list_y, list_h, button_x, button_w, button_h;
   char status[256];
+  char breadcrumb_status[256];
 } UI;
 
 static volatile sig_atomic_t stopping;
@@ -610,7 +611,8 @@ static void draw_triangle(UI *ui, unsigned int center_x, unsigned int center_y,
 }
 
 static void breadcrumb(UI *ui, char *buffer, size_t size) {
-  snprintf(buffer, size, "$ • /");
+  snprintf(buffer, size, "$ • %s%s/", ui->breadcrumb_status,
+           *ui->breadcrumb_status ? " | " : "");
   for (size_t i = 1; i <= ui->depth; i++) {
     size_t used = strlen(buffer);
     if (used + 5U >= size)
@@ -882,14 +884,11 @@ static char *action_command(const KualEntry *entry) {
 }
 
 static void internal_message(UI *ui, const KualEntry *entry) {
-  if (!entry->internal)
-    return;
-  const char *message = entry->internal;
-  if (!strncmp(message, "breadcrumb ", 11))
-    message += 11;
-  else if (!strncmp(message, "status ", 7))
-    message += 7;
-  snprintf(ui->status, sizeof(ui->status), "%s", message);
+  if (entry->internal_kind == KUAL_INTERNAL_BREADCRUMB)
+    snprintf(ui->breadcrumb_status, sizeof(ui->breadcrumb_status), "%s",
+             entry->internal);
+  else if (entry->internal_kind == KUAL_INTERNAL_STATUS)
+    snprintf(ui->status, sizeof(ui->status), "%s", entry->internal);
 }
 
 static int run_background(UI *ui, KualEntry *entry) {
@@ -907,7 +906,7 @@ static int run_background(UI *ui, KualEntry *entry) {
     free(command);
     return -1;
   }
-  if (entry->show_status && !entry->internal)
+  if (entry->show_status && entry->internal_kind != KUAL_INTERNAL_STATUS)
     snprintf(ui->status, sizeof(ui->status), "%s", command);
   free(command);
   if (entry->checked_after)
@@ -956,6 +955,7 @@ static void reload_menu(UI *ui, KualMenu *menu, KualErrors *errors) {
   kual_menu_load(menu, errors);
   kual_menu_add_errors(menu, errors);
   ui->depth = ui->page = 0;
+  *ui->breadcrumb_status = '\0';
   ui->nav[0] = &menu->root;
 }
 
@@ -973,17 +973,21 @@ static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors,
       ui->depth--;
     ui->page = 0;
     *ui->status = '\0';
+    *ui->breadcrumb_status = '\0';
   } else if (tap.action == TAP_TOP) {
     ui->depth = ui->page = 0;
     *ui->status = '\0';
+    *ui->breadcrumb_status = '\0';
   } else if (tap.action == TAP_NEXT) {
     ui->page = (ui->page + 1U) % pages;
+    *ui->breadcrumb_status = '\0';
   } else if (tap.action == TAP_ENTRY && tap.entry) {
     if (tap.entry->child_count) {
       if (ui->depth + 1 < MAX_NAV_DEPTH)
         ui->nav[++ui->depth] = tap.entry;
       ui->page = 0;
       *ui->status = '\0';
+      *ui->breadcrumb_status = '\0';
     } else {
       internal_message(ui, tap.entry);
       if (tap.entry->action) {
