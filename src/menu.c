@@ -2,10 +2,12 @@
 #define _POSIX_C_SOURCE 200809L
 #include "jsmn.h"
 #include "kual.h"
+#include "yxml.h"
 
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -17,6 +19,9 @@
 typedef struct {
   char *path;
   char *id;
+  char **menus;
+  size_t menu_count, menu_cap;
+  bool is_extension;
 } ExtensionFile;
 typedef struct {
   ExtensionFile *items;
@@ -30,6 +35,10 @@ typedef struct {
   VisitedDir *items;
   size_t len, cap;
 } VisitedDirs;
+typedef struct {
+  char *data;
+  size_t len, cap;
+} TextBuffer;
 
 static void entry_free(KualEntry *entry) {
   free(entry->name);
@@ -101,67 +110,176 @@ static KualEntry *add_child(KualEntry *parent) {
 static char *slice(const char *begin, const char *end) {
   if (!begin || !end || end < begin)
     return NULL;
-  size_t n = (size_t)(end - begin);
-  char *s = kual_xcalloc(n + 1, 1);
-  memcpy(s, begin, n);
-  return s;
+  size_t count = (size_t)(end - begin);
+  char *result = kual_xcalloc(count + 1U, 1U);
+  memcpy(result, begin, count);
+  return result;
 }
 
-static void replace_all(char **value, const char *needle,
-                        const char *replacement) {
-  char *s = *value, *hit = strstr(s, needle);
-  if (!hit)
-    return;
-  size_t before = (size_t)(hit - s), nl = strlen(needle),
-         rl = strlen(replacement);
-  size_t old = strlen(s);
-  char *out = kual_xcalloc(old - nl + rl + 1, 1);
-  memcpy(out, s, before);
-  memcpy(out + before, replacement, rl);
-  memcpy(out + before + rl, hit + nl, old - before - nl + 1);
-  free(s);
-  *value = out;
-  replace_all(value, needle, replacement);
+static void text_append(TextBuffer *buffer, const char *text) {
+  size_t count = strlen(text);
+  if (buffer->len + count + 1U > buffer->cap) {
+    size_t cap = buffer->cap ? buffer->cap : 32U;
+    while (cap < buffer->len + count + 1U)
+      cap *= 2U;
+    buffer->data = kual_xrealloc(buffer->data, cap);
+    buffer->cap = cap;
+  }
+  memcpy(buffer->data + buffer->len, text, count + 1U);
+  buffer->len += count;
 }
 
-static char *xml_text(const char *xml, const char *tag) {
-  char open[64], close[64];
-  snprintf(open, sizeof(open), "<%s", tag);
-  snprintf(close, sizeof(close), "</%s>", tag);
-  const char *a = strstr(xml, open);
-  if (!a)
-    return NULL;
-  a = strchr(a, '>');
-  if (!a)
-    return NULL;
-  a++;
-  const char *b = strstr(a, close);
-  if (!b)
-    return NULL;
-  char *out = slice(a, b);
-  replace_all(&out, "&amp;", "&");
-  replace_all(&out, "&lt;", "<");
-  replace_all(&out, "&gt;", ">");
-  replace_all(&out, "&quot;", "\"");
-  replace_all(&out, "&apos;", "'");
-  return out;
+static void text_reset(TextBuffer *buffer) {
+  buffer->len = 0;
+  if (buffer->data)
+    buffer->data[0] = '\0';
 }
 
-static bool xml_json_menu(const char *open, const char *gt) {
-  char *header = slice(open, gt);
-  bool is_json =
-      strstr(header, "type=\"json\"") || strstr(header, "type='json'");
-  free(header);
-  return is_json;
+static char *text_trimmed(const TextBuffer *buffer) {
+  const char *start = buffer->data ? buffer->data : "";
+  while (isspace((unsigned char)*start))
+    start++;
+  const char *end = start + strlen(start);
+  while (end > start && isspace((unsigned char)end[-1]))
+    end--;
+  size_t count = (size_t)(end - start);
+  char *result = kual_xcalloc(count + 1U, 1U);
+  memcpy(result, start, count);
+  return result;
 }
 
-static void files_add(ExtensionFiles *files, const char *path, char *id) {
+static void extension_file_free(ExtensionFile *file) {
+  free(file->path);
+  free(file->id);
+  for (size_t i = 0; i < file->menu_count; i++)
+    free(file->menus[i]);
+  free(file->menus);
+  memset(file, 0, sizeof(*file));
+}
+
+static void extension_menu_add(ExtensionFile *file, char *name) {
+  if (file->menu_count == file->menu_cap) {
+    file->menu_cap = file->menu_cap ? file->menu_cap * 2U : 2U;
+    file->menus =
+        kual_xrealloc(file->menus, file->menu_cap * sizeof(*file->menus));
+  }
+  file->menus[file->menu_count++] = name;
+}
+
+static const char *xml_error_name(yxml_ret_t result) {
+  switch (result) {
+  case YXML_EREF:
+    return "invalid entity reference";
+  case YXML_ECLOSE:
+    return "mismatched closing element";
+  case YXML_ESTACK:
+    return "element nesting or name exceeds parser capacity";
+  case YXML_EEOF:
+    return "unexpected end of file";
+  default:
+    return "invalid XML syntax";
+  }
+}
+
+static int parse_extension_xml(const char *xml, ExtensionFile *file,
+                               char **error_out) {
+  unsigned char stack[4096];
+  yxml_t parser;
+  yxml_init(&parser, stack, sizeof(stack));
+  TextBuffer id = {0}, menu = {0}, attr = {0};
+  int depth = 0, extension_depth = -1, id_depth = -1, menu_depth = -1;
+  bool type_attr = false, menu_is_json = false;
+  yxml_ret_t result = YXML_OK;
+
+  for (const unsigned char *cursor = (const unsigned char *)xml; *cursor;
+       cursor++) {
+    result = yxml_parse(&parser, *cursor);
+    if (result < 0)
+      break;
+    switch (result) {
+    case YXML_ELEMSTART:
+      depth++;
+      if (extension_depth < 0 && !strcmp(parser.elem, "extension")) {
+        extension_depth = depth;
+        file->is_extension = true;
+      } else if (extension_depth >= 0 && id_depth < 0 && !file->id &&
+                 !strcmp(parser.elem, "id")) {
+        id_depth = depth;
+        text_reset(&id);
+      } else if (extension_depth >= 0 && menu_depth < 0 &&
+                 !strcmp(parser.elem, "menu")) {
+        menu_depth = depth;
+        menu_is_json = false;
+        text_reset(&menu);
+      }
+      break;
+    case YXML_ATTRSTART:
+      type_attr = menu_depth == depth && !strcmp(parser.attr, "type");
+      if (type_attr)
+        text_reset(&attr);
+      break;
+    case YXML_ATTRVAL:
+      if (type_attr)
+        text_append(&attr, parser.data);
+      break;
+    case YXML_ATTREND:
+      if (type_attr) {
+        char *value = text_trimmed(&attr);
+        menu_is_json = !strcmp(value, "json");
+        free(value);
+      }
+      type_attr = false;
+      break;
+    case YXML_CONTENT:
+      if (depth == id_depth)
+        text_append(&id, parser.data);
+      if (depth == menu_depth)
+        text_append(&menu, parser.data);
+      break;
+    case YXML_ELEMEND:
+      if (depth == id_depth) {
+        file->id = text_trimmed(&id);
+        id_depth = -1;
+      }
+      if (depth == menu_depth) {
+        char *name = text_trimmed(&menu);
+        if (menu_is_json && *name)
+          extension_menu_add(file, name);
+        else
+          free(name);
+        menu_depth = -1;
+        menu_is_json = false;
+      }
+      if (depth == extension_depth)
+        extension_depth = -1;
+      depth--;
+      break;
+    default:
+      break;
+    }
+  }
+  if (result >= 0)
+    result = yxml_eof(&parser);
+  if (result < 0 && error_out) {
+    char message[192];
+    snprintf(message, sizeof(message), "%s at line %" PRIu32 ", byte %" PRIu64,
+             xml_error_name(result), parser.line, parser.byte);
+    *error_out = kual_xstrdup(message);
+  }
+  free(id.data);
+  free(menu.data);
+  free(attr.data);
+  return result < 0 ? -1 : 0;
+}
+
+static void files_add(ExtensionFiles *files, ExtensionFile *file) {
   if (files->len == files->cap) {
     files->cap = files->cap ? files->cap * 2 : 16;
     files->items =
         kual_xrealloc(files->items, files->cap * sizeof(*files->items));
   }
-  files->items[files->len++] = (ExtensionFile){kual_xstrdup(path), id};
+  files->items[files->len++] = *file;
+  memset(file, 0, sizeof(*file));
 }
 
 static bool excluded_path(const char *root, const char *path,
@@ -233,15 +351,22 @@ static void discover_dir(KualMenu *menu, const char *path, int depth,
       if (!xml)
         kual_errors_add(errors, child, "cannot read config.xml: %s",
                         strerror(errno));
-      else if (!strstr(xml, "<extension"))
-        kual_errors_add(errors, child, "not a KUAL extension config");
       else {
-        char *id = xml_text(xml, "id");
-        if (!id)
-          id = kual_xstrdup("");
-        add_id(menu, id);
-        files_add(files, child, id);
-        id = NULL;
+        ExtensionFile file = {.path = kual_xstrdup(child)};
+        char *parse_error = NULL;
+        if (parse_extension_xml(xml, &file, &parse_error) != 0) {
+          kual_errors_add(errors, child, "%s", parse_error);
+          free(parse_error);
+          extension_file_free(&file);
+        } else if (!file.is_extension) {
+          kual_errors_add(errors, child, "not a KUAL extension config");
+          extension_file_free(&file);
+        } else {
+          if (!file.id)
+            file.id = kual_xstrdup("");
+          add_id(menu, file.id);
+          files_add(files, &file);
+        }
       }
       free(xml);
     }
@@ -498,45 +623,15 @@ static void parse_json_menu(KualMenu *menu, const char *path, const char *cwd,
 
 static void parse_extension(KualMenu *menu, const ExtensionFile *file,
                             KualErrors *errors) {
-  char *xml = kual_read_file(file->path, NULL);
-  if (!xml)
-    return;
   char *cwd = kual_dirname(file->path);
-  const char *cursor = xml;
-  bool found = false;
-  while ((cursor = strstr(cursor, "<menu"))) {
-    if (cursor[5] != '>' && !isspace((unsigned char)cursor[5])) {
-      cursor += 5;
-      continue;
-    }
-    const char *gt = strchr(cursor, '>');
-    if (!gt)
-      break;
-    const char *end = strstr(gt + 1, "</menu>");
-    if (!end)
-      break;
-    if (xml_json_menu(cursor, gt)) {
-      char *name = slice(gt + 1, end);
-      char *start = name;
-      while (isspace((unsigned char)*start))
-        start++;
-      char *tail = start + strlen(start);
-      while (tail > start && isspace((unsigned char)tail[-1]))
-        *--tail = '\0';
-      if (*start) {
-        char *path = kual_join_path(cwd, start);
-        parse_json_menu(menu, path, cwd, file->id, errors);
-        free(path);
-        found = true;
-      }
-      free(name);
-    }
-    cursor = end + 7;
+  for (size_t i = 0; i < file->menu_count; i++) {
+    char *path = kual_join_path(cwd, file->menus[i]);
+    parse_json_menu(menu, path, cwd, file->id, errors);
+    free(path);
   }
-  if (!found)
+  if (!file->menu_count)
     kual_errors_add(errors, file->path, "no readable JSON menu declaration");
   free(cwd);
-  free(xml);
 }
 
 static void prune_entries(KualEntry *parent, const KualMenu *menu,
@@ -634,10 +729,8 @@ int kual_menu_load(KualMenu *menu, KualErrors *errors) {
   free(seen.items);
   for (size_t i = 0; i < files.len; i++)
     parse_extension(menu, &files.items[i], errors);
-  for (size_t i = 0; i < files.len; i++) {
-    free(files.items[i].path);
-    free(files.items[i].id);
-  }
+  for (size_t i = 0; i < files.len; i++)
+    extension_file_free(&files.items[i]);
   free(files.items);
   prune_entries(&menu->root, menu, errors);
   const char *collate = kual_config_get(&menu->config, "collate");

@@ -29,7 +29,7 @@ scope.
 | Internal messages | Breadcrumb and status internal messages are currently both displayed in the bottom status area, rather than in separate areas as in KUAL. |
 | Input | Touch, Home/Menu, back, next, and a small set of page-key aliases are supported. KUAL's numeric/QWERTY item shortcuts and Java focus navigation are not. |
 | Configuration | Discovery depth, path exclusion, symlink following, collation, and `ABC`, `ABC!`, and `123` sorting are supported. UI settings such as `KUAL_no_show_status` and the self-management menu are not. |
-| Parsing | `config.xml` is handled by a small purpose-built parser. Normal extension configurations work, but complex XML features such as namespaces or custom entity declarations may not. |
+| Parsing | `config.xml` is handled by the small, non-validating yxml parser. XML syntax, nesting, entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |
 | Fonts | Bundled Noto fonts cover KUAL's standard indicators and many scripts and symbols, but there is no font fallback; unsupported characters may be rendered as squares. |
 | Devices | Only recent ARM hard-float Kindles running firmware 5.16.3 or newer are targeted. Older ARMEL and keyboard-era devices are unsupported. |
 | Menu size | Menus are limited to ten nesting levels and ten visible rows per page. |

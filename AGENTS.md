@@ -22,6 +22,7 @@ framework.
   with a path outside this repository or modify its upstream sources as part
   of normal project work.
 - `third_party/jsmn.h` is the vendored JSON parser.
+- `third_party/yxml.c` and `third_party/yxml.h` are the vendored XML parser.
 
 Initialize dependencies after cloning:
 

@@ -18,6 +18,31 @@ grep -q 'Model mismatch => :' "$tmpdir/tree"
 grep -q 'Configured => :' "$tmpdir/tree"
 ! grep -q Invisible "$tmpdir/tree"
 
+mkdir -p "$tmpdir/xml/extensions/proper"
+printf '%s\n' '<?xml version="1.0"?>' \
+    '<extension>' \
+    '  <!-- Attribute order, whitespace, CDATA, and numeric entities are intentional. -->' \
+    '  <information><id>xml&#x2d;proper</id></information>' \
+    "  <menus><menu dynamic=\"true\" type = 'json'><![CDATA[ menu.json ]]></menu></menus>" \
+    '</extension>' > "$tmpdir/xml/extensions/proper/config.xml"
+printf '%s\n' '{"items":[{"name":"Proper XML","action":":","if":"\"xml-proper\" -ext"}]}' \
+    > "$tmpdir/xml/extensions/proper/menu.json"
+"$binary" --validate --extensions "$tmpdir/xml/extensions" \
+    > "$tmpdir/xml/tree" 2> "$tmpdir/xml/errors"
+test ! -s "$tmpdir/xml/errors"
+grep -q '^KUAL Next 0.1.0; model=Unknown; extensions=1; entries=1$' "$tmpdir/xml/tree"
+grep -q 'Proper XML => :' "$tmpdir/xml/tree"
+
+mkdir -p "$tmpdir/xml-broken/extensions/broken"
+printf '%s\n' '<extension><information><id>broken</information></id></extension>' \
+    > "$tmpdir/xml-broken/extensions/broken/config.xml"
+if "$binary" --validate --extensions "$tmpdir/xml-broken/extensions" \
+    > "$tmpdir/xml-broken/tree" 2> "$tmpdir/xml-broken/errors"; then
+    echo "invalid XML unexpectedly passed validation" >&2
+    exit 1
+fi
+grep -q 'mismatched closing element' "$tmpdir/xml-broken/errors"
+
 mkdir -p "$tmpdir/extensions/broken"
 cp "$fixture/alpha/config.xml" "$tmpdir/extensions/broken/config.xml"
 printf '%s\n' '{"items": [' > "$tmpdir/extensions/broken/menu.json"

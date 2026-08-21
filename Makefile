@@ -8,7 +8,7 @@ HOST_CC ?= cc
 HOST_CFLAGS ?= -O2 -g -std=c11 -Wall -Wextra -Wpedantic -Werror
 CPPFLAGS := -Iinclude -Ithird_party
 CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
-HOST_SOURCES := $(CORE_SOURCES) src/main.c
+HOST_SOURCES := $(CORE_SOURCES) third_party/yxml.c src/main.c
 HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
 
 FBINK_DIR := $(CURDIR)/third_party/FBInk
@@ -24,7 +24,8 @@ DEVICE_READELF := $(TC_BIN)/$(TC_TRIPLE)-readelf
 DEVICE_CFLAGS := -Os -std=c11 -Wall -Wextra -Wpedantic -march=armv7-a -mtune=cortex-a7 -mfpu=neon -mfloat-abi=hard -mthumb -ffunction-sections -fdata-sections
 DEVICE_LDFLAGS := -static -Wl,--gc-sections
 DEVICE_SOURCES := $(CORE_SOURCES) src/main.c src/ui_fbink.c
-DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES))
+DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) \
+	$(BUILD_DIR)/kindle/yxml.o
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 
 .PHONY: all host test toolchain kindle check package clean
@@ -32,7 +33,7 @@ all: host
 
 host: $(HOST_BINARY)
 
-$(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h
+$(HOST_BINARY): $(HOST_SOURCES) include/kual.h third_party/jsmn.h third_party/yxml.h
 	mkdir -p $(@D)
 	$(HOST_CC) $(CPPFLAGS) $(HOST_CFLAGS) -DKUAL_HOST -o $@ $(HOST_SOURCES)
 
@@ -52,9 +53,13 @@ $(FBINK_FEATURE_STAMP): $(FBINK_DIR)/Makefile $(FBINK_DIR)/fbink.h
 $(FBINK_LIB): $(FBINK_FEATURE_STAMP)
 	test -f $@
 
-$(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h $(FBINK_FEATURE_STAMP)
+$(BUILD_DIR)/kindle/%.o: src/%.c include/kual.h third_party/jsmn.h third_party/yxml.h $(FBINK_FEATURE_STAMP)
 	mkdir -p $(@D)
 	$(DEVICE_CC) $(CPPFLAGS) -I$(FBINK_DIR) $(DEVICE_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/kindle/yxml.o: third_party/yxml.c third_party/yxml.h $(FBINK_FEATURE_STAMP)
+	mkdir -p $(@D)
+	$(DEVICE_CC) $(CPPFLAGS) $(DEVICE_CFLAGS) -c -o $@ $<
 
 $(DEVICE_BINARY): $(DEVICE_OBJECTS) $(FBINK_LIB)
 	$(DEVICE_CC) $(DEVICE_CFLAGS) $(DEVICE_LDFLAGS) -o $@ $(DEVICE_OBJECTS) $(FBINK_LIB) -lm
@@ -73,6 +78,7 @@ package: check
 	cp $(DEVICE_BINARY) "$(BUILD_DIR)/package/kual-next/bin/kual-next"
 	cp LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/KUAL-Next-GPL-3.0-or-later.txt"
 	cp third_party/JSMN-LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/jsmn-MIT.txt"
+	cp third_party/YXML-LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/yxml-MIT.txt"
 	cp assets/fonts/OFL.txt "$(BUILD_DIR)/package/kual-next/LICENSES/Noto-SIL-OFL-1.1.txt"
 	cp assets/fonts/NotoSans.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSans.ttf"
 	cp assets/fonts/NotoSansSymbols.ttf "$(BUILD_DIR)/package/kual-next/fonts/NotoSansSymbols.ttf"
