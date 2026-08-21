@@ -6,6 +6,52 @@ evdev directly; Java, Kindlets, and Booklets are not required.
 
 ![Screenshot](./assets/screenshot.png)
 
+## Install on your Kindle
+
+### Before you start
+
+KUAL Next is for jailbroken Kindles running firmware 5.16.3 or newer. It does
+not jailbreak your Kindle. Your jailbreak must also include **SH Integration**,
+which is what makes `.sh` launchers appear as books in the Kindle library. You
+do not need to install the old Java-based KUAL launcher.
+
+If you can already open other `.sh` launchers from your Kindle library, your
+device is ready.
+
+### Installation
+
+1. Open the [latest KUAL Next
+   release](https://github.com/thiagokokada/kual-next/releases/latest).
+2. Under **Assets**, download the file named
+   `kual-next-<version>-kindlehf.zip`. Do not download either of the files
+   named **Source code**.
+3. Connect your Kindle to your computer with a USB cable and open the Kindle
+   drive.
+4. Unzip the downloaded file on your computer. Copy both the `documents` and
+   `kual-next` folders to the top level of the Kindle drive—the same place
+   where the existing `documents` folder is located. If your computer asks,
+   choose to merge the `documents` folders and replace existing KUAL Next
+   files. Do not delete your other documents.
+5. Check that the files are not inside an extra folder. The Kindle drive should
+   contain these paths:
+
+   ```text
+   documents/KUAL Next.sh
+   kual-next/bin/kual-next
+   ```
+
+6. Safely eject the Kindle, unplug the USB cable, and wait for its library to
+   refresh.
+7. Find **KUAL Next** in the Kindle library and tap it to open the launcher.
+   Existing compatible extensions in the Kindle's `extensions` folder should
+   appear automatically.
+
+### Updating
+
+Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and repeat
+the copy steps above. Allow your computer to replace the existing KUAL Next
+files. Your installed extensions are stored separately and will not be removed.
+
 ## Supported extension contract
 
 The launcher scans `/mnt/us/extensions` for `config.xml` files and their JSON
