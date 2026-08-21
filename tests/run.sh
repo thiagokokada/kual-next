@@ -47,10 +47,18 @@ grep -q 'mismatched closing element' "$tmpdir/xml-broken/errors"
 mkdir -p "$tmpdir/extensions/broken"
 cp "$fixture/alpha/config.xml" "$tmpdir/extensions/broken/config.xml"
 printf '%s\n' '{"items": [' > "$tmpdir/extensions/broken/menu.json"
+mkdir -p "$tmpdir/extensions/dependent"
+printf '%s\n' '<extension><information><id>dependent</id></information>' \
+	'<menus><menu type="json">menu.json</menu></menus></extension>' \
+	> "$tmpdir/extensions/dependent/config.xml"
+printf '%s\n' \
+	'{"items":[{"name":"Broken dependency","action":":","if":"\"broken\" -ext"}]}' \
+	> "$tmpdir/extensions/dependent/menu.json"
 if "$binary" --validate --extensions "$tmpdir/extensions" > "$tmpdir/broken.out" 2> "$tmpdir/broken.err"; then
     echo "invalid JSON unexpectedly passed validation" >&2
     exit 1
 fi
 grep -q 'invalid JSON menu' "$tmpdir/broken.err"
+! grep -q 'Broken dependency' "$tmpdir/broken.out"
 
 echo "host parser tests passed"

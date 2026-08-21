@@ -39,8 +39,8 @@ static char *condition_path(const char *cwd, const char *value) {
 }
 
 static bool has_extension(const KualMenu *menu, const char *id) {
-  for (size_t i = 0; i < menu->extension_id_count; i++)
-    if (strcmp(menu->extension_ids[i], id) == 0)
+  for (size_t i = 0; i < menu->extension_alias_count; i++)
+    if (strcmp(menu->extension_aliases[i], id) == 0)
       return true;
   return false;
 }

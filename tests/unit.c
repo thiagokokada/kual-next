@@ -23,6 +23,8 @@ int main(int argc, char **argv) {
   kual_menu_init(&menu, argv[1], "KindlePaperWhite5");
   assert(kual_menu_load(&menu, &errors) == 0);
   assert(errors.len == 0);
+  assert(menu.extension_id_count == 2);
+  assert(menu.extension_alias_count == 3);
 
   KualEntry *quoted = find_entry(&menu.root, "Quoted options");
   assert(quoted);

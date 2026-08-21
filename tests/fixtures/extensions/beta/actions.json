@@ -4,7 +4,7 @@
       "name": "Beta action",
       "priority": "-5",
       "action": "./beta.sh",
-      "if": "\"alpha\" -ext",
+      "if": "\"beta\" -ext \"beta-declared\" -ext &&",
       "internal": "status Ready",
       "exitmenu": false
     }

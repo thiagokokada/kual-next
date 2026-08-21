@@ -49,9 +49,10 @@ typedef struct KualEntry {
 typedef struct {
   KualEntry root;
   KualConfig config;
-  char **extension_ids;
+  char **extension_aliases;
+  size_t extension_alias_count;
+  size_t extension_alias_cap;
   size_t extension_id_count;
-  size_t extension_id_cap;
   char *extensions_dir;
   char *model;
   size_t next_order;

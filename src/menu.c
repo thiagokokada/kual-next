@@ -70,28 +70,28 @@ void kual_menu_init(KualMenu *menu, const char *extensions_dir,
 void kual_menu_free(KualMenu *menu) {
   entry_free(&menu->root);
   kual_config_free(&menu->config);
-  for (size_t i = 0; i < menu->extension_id_count; i++)
-    free(menu->extension_ids[i]);
-  free(menu->extension_ids);
+  for (size_t i = 0; i < menu->extension_alias_count; i++)
+    free(menu->extension_aliases[i]);
+  free(menu->extension_aliases);
   free(menu->extensions_dir);
   free(menu->model);
   memset(menu, 0, sizeof(*menu));
 }
 
-static void add_id(KualMenu *menu, const char *id) {
+static void add_alias(KualMenu *menu, const char *id) {
   if (!id || !*id)
     return;
-  for (size_t i = 0; i < menu->extension_id_count; i++)
-    if (!strcmp(menu->extension_ids[i], id))
+  for (size_t i = 0; i < menu->extension_alias_count; i++)
+    if (!strcmp(menu->extension_aliases[i], id))
       return;
-  if (menu->extension_id_count == menu->extension_id_cap) {
-    menu->extension_id_cap =
-        menu->extension_id_cap ? menu->extension_id_cap * 2 : 16;
-    menu->extension_ids =
-        kual_xrealloc(menu->extension_ids,
-                      menu->extension_id_cap * sizeof(*menu->extension_ids));
+  if (menu->extension_alias_count == menu->extension_alias_cap) {
+    menu->extension_alias_cap =
+        menu->extension_alias_cap ? menu->extension_alias_cap * 2 : 16;
+    menu->extension_aliases = kual_xrealloc(
+        menu->extension_aliases,
+        menu->extension_alias_cap * sizeof(*menu->extension_aliases));
   }
-  menu->extension_ids[menu->extension_id_count++] = kual_xstrdup(id);
+  menu->extension_aliases[menu->extension_alias_count++] = kual_xstrdup(id);
 }
 
 static KualEntry *add_child(KualEntry *parent) {
@@ -364,7 +364,6 @@ static void discover_dir(KualMenu *menu, const char *path, int depth,
         } else {
           if (!file.id)
             file.id = kual_xstrdup("");
-          add_id(menu, file.id);
           files_add(files, &file);
         }
       }
@@ -573,13 +572,13 @@ static int parse_item(KualMenu *menu, KualEntry *parent, const char *json,
   return after;
 }
 
-static void parse_json_menu(KualMenu *menu, const char *path, const char *cwd,
+static bool parse_json_menu(KualMenu *menu, const char *path, const char *cwd,
                             const char *id, KualErrors *errors) {
   size_t size;
   char *json = kual_read_file(path, &size);
   if (!json) {
     kual_errors_add(errors, path, "cannot read JSON menu: %s", strerror(errno));
-    return;
+    return false;
   }
   size_t cap = size / 4 + 32;
   if (cap < 64)
@@ -601,7 +600,7 @@ static void parse_json_menu(KualMenu *menu, const char *path, const char *cwd,
     kual_errors_add(errors, path, "invalid JSON menu (%d)", parsed);
     free(tokens);
     free(json);
-    return;
+    return false;
   }
   bool found = false;
   int cursor = 1;
@@ -619,18 +618,27 @@ static void parse_json_menu(KualMenu *menu, const char *path, const char *cwd,
     kual_errors_add(errors, path, "top-level items array is missing");
   free(tokens);
   free(json);
+  return found;
 }
 
 static void parse_extension(KualMenu *menu, const ExtensionFile *file,
                             KualErrors *errors) {
   char *cwd = kual_dirname(file->path);
+  bool loaded = false;
   for (size_t i = 0; i < file->menu_count; i++) {
     char *path = kual_join_path(cwd, file->menus[i]);
-    parse_json_menu(menu, path, cwd, file->id, errors);
+    loaded |= parse_json_menu(menu, path, cwd, file->id, errors);
     free(path);
   }
   if (!file->menu_count)
     kual_errors_add(errors, file->path, "no readable JSON menu declaration");
+  if (loaded) {
+    const char *directory_id = strrchr(cwd, '/');
+    directory_id = directory_id ? directory_id + 1 : cwd;
+    add_alias(menu, directory_id);
+    add_alias(menu, file->id);
+    menu->extension_id_count++;
+  }
   free(cwd);
 }
 
