@@ -23,7 +23,7 @@ jobs:
       version: ${{ steps.validate.outputs.version }}
     steps:
       - name: Check out release definitions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -42,14 +42,14 @@ jobs:
           fi
           printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
       - name: Check out tagged source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
           submodules: recursive
       - name: Install Nix
-        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: experimental-features = nix-command flakes
       - name: Install Kindle toolchain
@@ -64,7 +64,7 @@ jobs:
           cd dist
           sha256sum "$package" >"$package.sha256"
       - name: Preserve release assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ inputs.tag }}
           path: |
@@ -81,7 +81,7 @@ jobs:
       contents: write
     steps:
       - name: Download release assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@v8
         with:
           name: release-${{ inputs.tag }}
           path: release-assets

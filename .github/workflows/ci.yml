@@ -19,12 +19,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
           submodules: recursive
       - name: Install Nix
-        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: experimental-features = nix-command flakes
       - name: Run host tests
@@ -35,12 +35,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
           submodules: recursive
       - name: Install Nix
-        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: experimental-features = nix-command flakes
       - name: Install Kindle toolchain
@@ -48,7 +48,7 @@ jobs:
       - name: Build and verify package
         run: nix develop --command make package
       - name: Upload Kindle package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@v7
         with:
           name: kual-next-kindlehf
           path: dist/kual-next-*-kindlehf.zip
