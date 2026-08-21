@@ -89,6 +89,7 @@ int main(int argc, char **argv) {
   KualEntry *status = find_entry(&menu.root, "Status message");
   assert(status && status->internal_kind == KUAL_INTERNAL_STATUS);
   assert(!strcmp(status->internal, "Working"));
+  assert(status->show_status);
   KualEntry *unknown = find_entry(&menu.root, "Unknown internal");
   assert(unknown && unknown->internal_kind == KUAL_INTERNAL_NONE);
   assert(!unknown->internal);

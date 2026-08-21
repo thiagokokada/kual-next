@@ -923,7 +923,8 @@ static int run_background(UI *ui, KualEntry *entry) {
     free(command);
     return -1;
   }
-  if (entry->show_status && entry->internal_kind != KUAL_INTERNAL_STATUS)
+  /* Original KUAL applies the action status after any internal message. */
+  if (entry->show_status)
     snprintf(ui->status, sizeof(ui->status), "%s", command);
   free(command);
   if (entry->checked_after)
