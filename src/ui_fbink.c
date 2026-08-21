@@ -657,10 +657,10 @@ static void ui_draw(UI *ui) {
   size_t pages = (total + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
   bool up_enabled = ui->depth > 0U;
   bool next_enabled = pages > 1U;
-  rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius,
-                  up_enabled ? 2U : 1U, up_enabled ? 0U : 170U);
-  rounded_outline(ui, right_x, ui->list_y, ui->side_w, ui->list_h, radius,
-                  next_enabled ? 2U : 1U, next_enabled ? 0U : 170U);
+  rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
+                  170U);
+  rounded_outline(ui, right_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
+                  170U);
 
   char trail[768];
   breadcrumb(ui, trail, sizeof(trail));
