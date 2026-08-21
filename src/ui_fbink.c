@@ -605,15 +605,19 @@ static void rounded_outline(UI *ui, unsigned int x, unsigned int y,
 }
 
 static void draw_triangle(UI *ui, unsigned int center_x, unsigned int center_y,
-                          bool points_right, uint8_t gray) {
+                          bool points_up, uint8_t gray) {
   unsigned int half = ui->side_w / 11U;
   if (half < 8U)
     half = 8U;
   for (unsigned int offset = 0; offset <= half; offset++) {
     unsigned int span = half - offset;
-    unsigned int x = points_right ? center_x - half / 2U + offset
-                                  : center_x + half / 2U - offset;
-    line_gray(ui, x, center_y - span, 1U, span * 2U + 1U, gray);
+    if (points_up) {
+      unsigned int y = center_y + half / 2U - offset;
+      line_gray(ui, center_x - span, y, span * 2U + 1U, 1U, gray);
+    } else {
+      unsigned int x = center_x - half / 2U + offset;
+      line_gray(ui, x, center_y - span, 1U, span * 2U + 1U, gray);
+    }
   }
 }
 
@@ -677,9 +681,9 @@ static void ui_draw(UI *ui) {
   }
 
   draw_triangle(ui, outer_x + ui->side_w / 2U, ui->list_y + ui->list_h / 2U,
-                false, ui->depth ? 80U : 165U);
+                true, ui->depth ? 80U : 165U);
   draw_triangle(ui, right_x + ui->side_w / 2U, ui->list_y + ui->list_h / 2U,
-                true, pages > 1U ? 80U : 165U);
+                false, pages > 1U ? 80U : 165U);
 
   char footer[512];
   if (*ui->status)
