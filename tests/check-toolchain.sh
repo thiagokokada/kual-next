@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/kual-toolchain-test.XXXXXX")
 trap 'rm -rf "$tmpdir"' 0 HUP INT TERM
 mock_bin="$tmpdir/bin"
