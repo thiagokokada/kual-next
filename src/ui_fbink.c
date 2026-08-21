@@ -24,6 +24,8 @@
 #define MAX_NAV_DEPTH (KUAL_MAX_DEPTH + 1)
 #define KUAL_PAGE_ROWS 10U
 #define FRAMEBUFFER_WATCHDOG_MS 250L
+#define FRAMEBUFFER_WATCHDOG_TILES 32U
+#define FRAMEBUFFER_WATCHDOG_TILES_PER_CHECK 4U
 
 typedef struct {
   int fd;
@@ -53,7 +55,14 @@ typedef struct {
   bool resume_redraw_pending;
   struct timespec resume_redraw_at;
   bool framebuffer_watchdog_pending;
-  uint64_t framebuffer_signature;
+  unsigned char *framebuffer;
+  size_t framebuffer_size;
+  size_t framebuffer_row_start;
+  size_t framebuffer_row_bytes;
+  size_t framebuffer_row_stride;
+  size_t framebuffer_rows;
+  uint32_t framebuffer_signatures[FRAMEBUFFER_WATCHDOG_TILES];
+  size_t framebuffer_watchdog_tile;
   struct timespec framebuffer_watchdog_at;
   KualEntry *nav[MAX_NAV_DEPTH];
   size_t depth;
@@ -643,35 +652,57 @@ static void breadcrumb(UI *ui, char *buffer, size_t size) {
   }
 }
 
-static bool framebuffer_signature(UI *ui, uint64_t *signature) {
-  unsigned int outer_x = ui->gap / 2U;
-  unsigned int right_x = ui->state.view_width - outer_x - ui->side_w;
-  unsigned int center_y = ui->list_y + ui->list_h / 2U;
-  unsigned int left_center = outer_x + ui->side_w / 2U;
-  unsigned int right_center = right_x + ui->side_w / 2U;
-  const uint16_t samples[][2] = {
-      {(uint16_t)outer_x, (uint16_t)center_y},
-      {(uint16_t)(outer_x + ui->side_w - 1U), (uint16_t)center_y},
-      {(uint16_t)right_x, (uint16_t)center_y},
-      {(uint16_t)(right_x + ui->side_w - 1U), (uint16_t)center_y},
-      {(uint16_t)left_center, (uint16_t)ui->list_y},
-      {(uint16_t)left_center, (uint16_t)(ui->list_y + ui->list_h - 1U)},
-      {(uint16_t)left_center, (uint16_t)center_y},
-      {(uint16_t)right_center, (uint16_t)center_y},
-  };
-  uint64_t hash = UINT64_C(1469598103934665603);
-  for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
-    uint8_t rgba[4];
-    if (fbink_get_pixel(ui->fbfd, samples[i][0], samples[i][1], &rgba[0],
-                        &rgba[1], &rgba[2], &rgba[3]) != 0)
-      return false;
-    for (size_t channel = 0; channel < sizeof(rgba); channel++) {
-      hash ^= rgba[channel];
-      hash *= UINT64_C(1099511628211);
+static bool framebuffer_watchdog_layout(UI *ui) {
+  struct fb_var_screeninfo var_info;
+  struct fb_fix_screeninfo fix_info;
+  fbink_get_fb_info(&var_info, &fix_info);
+  ui->framebuffer = fbink_get_fb_pointer(ui->fbfd, &ui->framebuffer_size);
+  size_t bytes_per_pixel = ((size_t)var_info.bits_per_pixel + 7U) / 8U;
+  if (!ui->framebuffer || !bytes_per_pixel || !var_info.xres ||
+      !var_info.yres || !fix_info.line_length)
+    return false;
+  ui->framebuffer_row_stride = fix_info.line_length;
+  ui->framebuffer_row_bytes = (size_t)var_info.xres * bytes_per_pixel;
+  ui->framebuffer_rows = var_info.yres;
+  ui->framebuffer_row_start =
+      (size_t)var_info.yoffset * ui->framebuffer_row_stride +
+      (size_t)var_info.xoffset * bytes_per_pixel;
+  if (ui->framebuffer_row_bytes > ui->framebuffer_row_stride ||
+      ui->framebuffer_row_start >= ui->framebuffer_size)
+    return false;
+  if (ui->framebuffer_row_bytes >
+      ui->framebuffer_size - ui->framebuffer_row_start)
+    return false;
+  size_t last_row = ui->framebuffer_rows - 1U;
+  if (last_row > (ui->framebuffer_size - ui->framebuffer_row_start -
+                  ui->framebuffer_row_bytes) /
+                     ui->framebuffer_row_stride)
+    return false;
+  return true;
+}
+
+static uint32_t framebuffer_tile_signature(const UI *ui, size_t tile) {
+  size_t first_row = ui->framebuffer_rows * tile / FRAMEBUFFER_WATCHDOG_TILES;
+  size_t end_row =
+      ui->framebuffer_rows * (tile + 1U) / FRAMEBUFFER_WATCHDOG_TILES;
+  uint32_t hash = UINT32_C(2166136261);
+  for (size_t row = first_row; row < end_row; row++) {
+    const unsigned char *pixel = ui->framebuffer + ui->framebuffer_row_start +
+                                 row * ui->framebuffer_row_stride;
+    size_t i = 0;
+    for (; i + sizeof(uint32_t) <= ui->framebuffer_row_bytes;
+         i += sizeof(uint32_t)) {
+      uint32_t word;
+      memcpy(&word, pixel + i, sizeof(word));
+      hash ^= word;
+      hash *= UINT32_C(16777619);
+    }
+    for (; i < ui->framebuffer_row_bytes; i++) {
+      hash ^= pixel[i];
+      hash *= UINT32_C(16777619);
     }
   }
-  *signature = hash;
-  return true;
+  return hash;
 }
 
 static void framebuffer_watchdog_schedule(UI *ui) {
@@ -685,10 +716,13 @@ static void framebuffer_watchdog_schedule(UI *ui) {
 }
 
 static void framebuffer_watchdog_arm(UI *ui) {
-  if (!framebuffer_signature(ui, &ui->framebuffer_signature)) {
+  if (!framebuffer_watchdog_layout(ui)) {
     ui->framebuffer_watchdog_pending = false;
     return;
   }
+  for (size_t tile = 0; tile < FRAMEBUFFER_WATCHDOG_TILES; tile++)
+    ui->framebuffer_signatures[tile] = framebuffer_tile_signature(ui, tile);
+  ui->framebuffer_watchdog_tile = 0U;
   framebuffer_watchdog_schedule(ui);
 }
 
@@ -827,16 +861,18 @@ static void finish_framebuffer_watchdog(UI *ui) {
     ui->framebuffer_watchdog_pending = false;
     return;
   }
-  uint64_t current;
-  if (!framebuffer_signature(ui, &current)) {
-    ui->framebuffer_watchdog_pending = false;
-    return;
+  for (size_t checked = 0; checked < FRAMEBUFFER_WATCHDOG_TILES_PER_CHECK;
+       checked++) {
+    size_t tile = ui->framebuffer_watchdog_tile;
+    ui->framebuffer_watchdog_tile = (tile + 1U) % FRAMEBUFFER_WATCHDOG_TILES;
+    if (framebuffer_tile_signature(ui, tile) !=
+        ui->framebuffer_signatures[tile]) {
+      kual_log("Kindle framework overwrote the framebuffer; redrawing");
+      ui_draw(ui);
+      return;
+    }
   }
-  if (current != ui->framebuffer_signature) {
-    kual_log("Kindle framework overwrote the framebuffer; redrawing");
-    ui_draw(ui);
-  } else
-    framebuffer_watchdog_schedule(ui);
+  framebuffer_watchdog_schedule(ui);
 }
 
 static void finish_resume_redraw(UI *ui) {
