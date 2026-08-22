@@ -1,7 +1,16 @@
 {
   "items": [
     {
+      "name": "Zeta Section (Priority -10)",
+      "priority": -10,
+      "items": [
+        {"name": "Zeta Section Action 1", "action": "bin/log-action.sh", "params": "zeta-1", "exitmenu": false},
+        {"name": "Zeta Section Action 2", "action": "bin/log-action.sh", "params": "zeta-2", "exitmenu": false}
+      ]
+    },
+    {
       "name": "Device UI Test",
+      "priority": 0,
       "items": [
         {
           "name": "01 Breadcrumb message",
@@ -73,8 +82,24 @@
         {"name": "12 Page filler", "action": "bin/log-action.sh", "params": "filler-12", "exitmenu": false},
         {"name": "13 Page filler", "action": "bin/log-action.sh", "params": "filler-13", "exitmenu": false},
         {"name": "14 Page filler", "action": "bin/log-action.sh", "params": "filler-14", "exitmenu": false},
+        {
+          "name": "15 Sort Demo (ABC vs 123 vs ABC!)",
+          "items": [
+            {"name": "Gamma [Author #1, Priority 1]", "priority": 1, "action": "bin/log-action.sh", "params": "demo-gamma", "exitmenu": false},
+            {"name": "Alpha [Author #2, Priority 3]", "priority": 3, "action": "bin/log-action.sh", "params": "demo-alpha", "exitmenu": false},
+            {"name": "Beta [Author #3, Priority 2]", "priority": 2, "action": "bin/log-action.sh", "params": "demo-beta", "exitmenu": false}
+          ]
+        },
         {"name": "Collated section", "items": [{"name": "Collated A", "action": "bin/log-action.sh", "params": "collated-a", "exitmenu": false}]},
         {"name": "Collated section", "items": [{"name": "Collated B", "action": "bin/log-action.sh", "params": "collated-b", "exitmenu": false}]}
+      ]
+    },
+    {
+      "name": "Alpha Section (Priority 10)",
+      "priority": 10,
+      "items": [
+        {"name": "Alpha Section Action 1", "action": "bin/log-action.sh", "params": "alpha-1", "exitmenu": false},
+        {"name": "Alpha Section Action 2", "action": "bin/log-action.sh", "params": "alpha-2", "exitmenu": false}
       ]
     }
   ]

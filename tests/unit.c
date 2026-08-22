@@ -113,8 +113,56 @@ int main(int argc, char **argv) {
   assert(find_entry(shared, "Second"));
   assert(find_entry(shared, "Third"));
 
+  KualEntry *kual = find_entry(&menu.root, "KUAL");
+  assert(kual);
+  assert(&menu.root.children[0] == kual);
+  KualEntry *sort_btn = find_entry(kual, "Sort menu ABC");
+  assert(sort_btn);
+  assert(sort_btn->priority == 2);
+  assert(!sort_btn->exit_menu);
+  assert(sort_btn->checked_after);
+  assert(sort_btn->refresh_after);
+  assert(!sort_btn->show_status);
+
+  KualEntry *quit_btn = find_entry(kual, "\xc3\x97 Quit");
+  assert(quit_btn);
+  assert(quit_btn->priority == 99);
+  assert(quit_btn->exit_menu);
+  assert(quit_btn->show_status);
+  assert(!strcmp(quit_btn->action, ":"));
+
   kual_menu_free(&menu);
   kual_errors_free(&errors);
+
+  /* Test Save and reset KUAL log with non-empty log file */
+  FILE *logf = fopen(KUAL_DEFAULT_LOG, "w");
+  if (logf) {
+    fputs("test log entry\n", logf);
+    fclose(logf);
+    kual_menu_init(&menu, argv[1], "KindlePaperWhite5");
+    assert(kual_menu_load(&menu, &errors) == 0);
+    KualEntry *log_btn = find_entry(&menu.root, "Save and reset KUAL log");
+    assert(log_btn);
+    assert(log_btn->priority == 3);
+    assert(!log_btn->exit_menu);
+    assert(log_btn->checked_after);
+    assert(log_btn->show_date);
+    assert(!log_btn->show_status);
+    kual_menu_free(&menu);
+    kual_errors_free(&errors);
+    unlink(KUAL_DEFAULT_LOG);
+  }
+
+  /* Test KUAL ● N when errors exist */
+  kual_menu_init(&menu, argv[1], "KindlePaperWhite5");
+  kual_errors_add(&errors, "/path/to/test.json", "syntax error");
+  assert(kual_menu_load(&menu, &errors) == 0);
+  KualEntry *kual_err = find_entry(&menu.root, "KUAL \xe2\x97\x8f 1");
+  assert(kual_err);
+  assert(find_entry(kual_err, "test.json: syntax error"));
+  kual_menu_free(&menu);
+  kual_errors_free(&errors);
+
   puts("host unit tests passed");
   return 0;
 }

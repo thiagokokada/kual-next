@@ -742,6 +742,144 @@ static void collate_entries(KualEntry *parent) {
   }
 }
 
+static void build_kual_menu(KualMenu *menu, const KualErrors *errors) {
+  const char *show = kual_config_get(&menu->config, "show_KUAL_buttons");
+  if (show && !strcmp(show, "0") && (!errors || !errors->len))
+    return;
+
+  KualEntry kual_menu = {0};
+  if (errors && errors->len > 0) {
+    size_t name_len = 32;
+    kual_menu.name = kual_xcalloc(name_len, 1);
+    snprintf(kual_menu.name, name_len, "KUAL \xe2\x97\x8f %zu", errors->len);
+  } else {
+    kual_menu.name = kual_xstrdup("KUAL");
+  }
+  kual_menu.exit_menu = true;
+  kual_menu.show_status = true;
+  kual_menu.priority = INT_MIN;
+  kual_menu.order = 0;
+
+  if (errors && errors->len > 0) {
+    for (size_t i = 0; i < errors->len; i++) {
+      KualEntry *entry = add_child(&kual_menu);
+      const char *base = strrchr(errors->items[i].source, '/');
+      base = base ? base + 1 : errors->items[i].source;
+      size_t needed = strlen(base) + strlen(errors->items[i].message) + 3;
+      entry->name = kual_xcalloc(needed, 1);
+      snprintf(entry->name, needed, "%s: %s", base, errors->items[i].message);
+      entry->action = kual_xstrdup(":");
+      entry->internal = kual_xstrdup(errors->items[i].message);
+      entry->internal_kind = KUAL_INTERNAL_BREADCRUMB;
+      entry->working_dir = kual_xstrdup("/var/tmp");
+      entry->exit_menu = false;
+      entry->show_status = false;
+      entry->priority = -1000;
+      entry->order = menu->next_order++;
+    }
+  }
+
+  if (!show || strcmp(show, "0") != 0) {
+    const char *buttons_str = (show && *show) ? show : "2 3 99";
+    const char *mode = kual_config_get(&menu->config, "sort_mode");
+    if (!mode)
+      mode = "ABC";
+    bool is_abc = !strcasecmp(mode, "ABC") || !strcasecmp(mode, "ABC!");
+    const char *sort_verb = is_abc ? "123" : "ABC";
+
+    const char *cursor = buttons_str;
+    while (*cursor) {
+      while (isspace((unsigned char)*cursor))
+        cursor++;
+      if (!*cursor)
+        break;
+      const char *start = cursor;
+      while (*cursor && !isspace((unsigned char)*cursor))
+        cursor++;
+      size_t len = (size_t)(cursor - start);
+      if (len == 1 && *start == '2') {
+        KualEntry *btn = add_child(&kual_menu);
+        size_t name_len = strlen("Sort menu ") + strlen(sort_verb) + 1;
+        btn->name = kual_xcalloc(name_len, 1);
+        snprintf(btn->name, name_len, "Sort menu %s", sort_verb);
+        char *config_path = kual_join_path(menu->extensions_dir, "KUAL.cfg");
+        size_t act_len = strlen(config_path) * 4 + 256;
+        btn->action = kual_xcalloc(act_len, 1);
+        snprintf(
+            btn->action, act_len,
+            "[ -r '%s' ] || echo \"# %s - created on `date`\" >'%s';"
+            "s=$(awk 'BEGIN{nf=1} "
+            "/^\\s*KUAL_sort_mode=/{sub(/=.*/,\"=\\\"%s\\\"\");nf=0} "
+            "{print} END{if(nf) print \"KUAL_sort_mode=\\\"%s\\\"\"}' '%s') && "
+            "[ 0 != ${#s} ] && echo \"$s\" >'%s'",
+            config_path, config_path, config_path, sort_verb, sort_verb,
+            config_path, config_path);
+        free(config_path);
+        btn->working_dir = kual_xstrdup("/var/tmp");
+        btn->priority = 2;
+        btn->exit_menu = false;
+        btn->checked_after = true;
+        btn->refresh_after = true;
+        btn->show_status = false;
+        btn->order = menu->next_order++;
+      } else if (len == 1 && *start == '3') {
+        char *cond_err = NULL;
+        bool log_exists = kual_condition_eval("\"" KUAL_DEFAULT_LOG "\" -z!",
+                                              "/var/tmp", menu, &cond_err);
+        free(cond_err);
+        if (log_exists) {
+          KualEntry *btn = add_child(&kual_menu);
+          btn->name = kual_xstrdup("Save and reset KUAL log");
+          btn->action = kual_xstrdup(
+              "mv '" KUAL_DEFAULT_LOG "' \"/mnt/us/documents/KUAL-`date -u "
+              "-Iminutes | sed s/:/./g`.txt\";"
+              "dbus-send --system /default com.lab126.powerd.resuming int32:1");
+          btn->working_dir = kual_xstrdup("/var/tmp");
+          btn->condition = kual_xstrdup("\"" KUAL_DEFAULT_LOG "\" -z!");
+          btn->priority = 3;
+          btn->exit_menu = false;
+          btn->checked_after = true;
+          btn->show_status = false;
+          btn->show_date = true;
+          btn->order = menu->next_order++;
+        }
+      } else if (len == 2 && !strncmp(start, "99", 2)) {
+        KualEntry *btn = add_child(&kual_menu);
+        btn->name = kual_xstrdup("\xc3\x97 Quit");
+        btn->action = kual_xstrdup(":");
+        btn->working_dir = kual_xstrdup("/var/tmp");
+        btn->priority = 99;
+        btn->exit_menu = true;
+        btn->show_status = true;
+        btn->order = menu->next_order++;
+      }
+    }
+  }
+
+  if (!kual_menu.child_count) {
+    entry_free(&kual_menu);
+    return;
+  }
+
+  const char *mode = kual_config_get(&menu->config, "sort_mode");
+  if (!mode)
+    mode = "ABC";
+  if (!strcasecmp(mode, "123") || !strcasecmp(mode, "ABC!")) {
+    sort_entries(&kual_menu, true);
+  }
+
+  if (menu->root.child_count == menu->root.child_cap) {
+    menu->root.child_cap = menu->root.child_cap ? menu->root.child_cap * 2 : 8;
+    menu->root.children =
+        kual_xrealloc(menu->root.children,
+                      menu->root.child_cap * sizeof(*menu->root.children));
+  }
+  memmove(&menu->root.children[1], &menu->root.children[0],
+          menu->root.child_count * sizeof(*menu->root.children));
+  menu->root.children[0] = kual_menu;
+  menu->root.child_count++;
+}
+
 int kual_menu_load(KualMenu *menu, KualErrors *errors) {
   char *config_path = kual_join_path(menu->extensions_dir, "KUAL.cfg");
   kual_config_load(&menu->config, config_path, errors);
@@ -785,32 +923,13 @@ int kual_menu_load(KualMenu *menu, KualErrors *errors) {
     sort_mode = 1;
     sort_entries(&menu->root, false);
   }
+  build_kual_menu(menu, errors);
   return menu->root.child_count ? 0 : -1;
 }
 
 void kual_menu_add_errors(KualMenu *menu, const KualErrors *errors) {
-  if (!errors || !errors->len)
-    return;
-  KualEntry *group = add_child(&menu->root);
-  group->name = kual_xstrdup("Errors");
-  group->priority = INT_MIN;
-  group->order = menu->next_order++;
-  group->exit_menu = false;
-  group->show_status = false;
-  for (size_t i = 0; i < errors->len; i++) {
-    KualEntry *entry = add_child(group);
-    const char *base = strrchr(errors->items[i].source, '/');
-    base = base ? base + 1 : errors->items[i].source;
-    size_t needed = strlen(base) + strlen(errors->items[i].message) + 3;
-    entry->name = kual_xcalloc(needed, 1);
-    snprintf(entry->name, needed, "%s: %s", base, errors->items[i].message);
-    entry->action = kual_xstrdup(":");
-    entry->internal = kual_xstrdup(errors->items[i].message);
-    entry->working_dir = kual_xstrdup("/var/tmp");
-    entry->exit_menu = false;
-    entry->show_status = false;
-    entry->order = menu->next_order++;
-  }
+  (void)menu;
+  (void)errors;
 }
 
 static void print_entry(const KualEntry *entry, FILE *out, int depth) {
