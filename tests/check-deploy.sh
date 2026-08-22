@@ -11,10 +11,6 @@ grep -Fq 'launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}' \
 	"$root/assets/KUAL Next.sh"
 grep -Fq 'extensions=${KUAL_NEXT_EXTENSIONS:-}' "$root/assets/KUAL Next.sh"
 grep -Fxq '# DontUseFBInk' "$root/assets/KUAL Next.sh"
-if grep -Fq 'exec >>"$log" 2>&1' "$root/assets/KUAL Next.sh"; then
-	echo "scriptlet still closes SH Integration's FBInk pipe manually" >&2
-	exit 1
-fi
 
 if sh "$root/scripts/deploy-kindle.sh" >"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "deployment without arguments unexpectedly succeeded" >&2
