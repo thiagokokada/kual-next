@@ -22,6 +22,14 @@ const page_rows = ui_logic.page_rows;
 const max_inputs = 16;
 const max_nav_depth = core.max_depth + 1;
 
+fn errnoValue() c_int {
+    return c.__errno_location().*;
+}
+
+fn transientReadError(value: c_int) bool {
+    return value == c.EAGAIN or value == c.EINTR;
+}
+
 fn linuxReadIoctlRequest(comptime kind: u8, comptime number: u8, comptime Payload: type) c_int {
     const read_direction: u32 = 2;
     const direction_shift = 30;
@@ -91,6 +99,7 @@ const InputDevice = struct {
     down: bool = false,
     reported_down: bool = false,
     release_pending: bool = false,
+    read_error_reported: bool = false,
 };
 
 const TapAction = enum { none, close, back, top, next, entry };
@@ -130,6 +139,7 @@ const UI = struct {
     button_height: u32 = 0,
     status: [256]u8 = std.mem.zeroes([256]u8),
     breadcrumb_status: [256]u8 = std.mem.zeroes([256]u8),
+    render_error_reported: bool = false,
 
     fn init(allocator: std.mem.Allocator, io: Io, root: *core.Entry) !UI {
         var ui: UI = .{ .allocator = allocator, .io = io };
@@ -145,11 +155,19 @@ const UI = struct {
         errdefer ui.cleanup();
         if (c.fbink_init(ui.fbfd, &ui.draw_config) != 0) return error.FBInkInitFailed;
         c.fbink_get_state(&ui.draw_config, &ui.state);
-        if (c.access("/mnt/us/kual-next/fonts/NotoSans.ttf", c.R_OK) == 0 and
-            c.fbink_add_ot_font_v2("/mnt/us/kual-next/fonts/NotoSans.ttf", c.FNT_REGULAR, &ui.text_config) == 0)
+        const text_font = "/mnt/us/kual-next/fonts/NotoSans.ttf";
+        if (c.access(text_font, c.R_OK) != 0)
+            core.log(io, allocator, "cannot read UI font {s}: errno {d}; using FBInk fallback font", .{ text_font, errnoValue() })
+        else if (c.fbink_add_ot_font_v2(text_font, c.FNT_REGULAR, &ui.text_config) != 0)
+            core.log(io, allocator, "FBInk could not load UI font {s}; using fallback font", .{text_font})
+        else
             ui.text_ready = true;
-        if (c.access("/mnt/us/kual-next/fonts/NotoSansSymbols2-Regular.otf", c.R_OK) == 0 and
-            c.fbink_add_ot_font_v2("/mnt/us/kual-next/fonts/NotoSansSymbols2-Regular.otf", c.FNT_REGULAR, &ui.symbol_config) == 0)
+        const symbol_font = "/mnt/us/kual-next/fonts/NotoSansSymbols2-Regular.otf";
+        if (c.access(symbol_font, c.R_OK) != 0)
+            core.log(io, allocator, "cannot read symbol font {s}: errno {d}; using text indicators", .{ symbol_font, errnoValue() })
+        else if (c.fbink_add_ot_font_v2(symbol_font, c.FNT_REGULAR, &ui.symbol_config) != 0)
+            core.log(io, allocator, "FBInk could not load symbol font {s}; using text indicators", .{symbol_font})
+        else
             ui.symbols_ready = true;
         ui.layout();
         try ui.openInputs();
@@ -161,8 +179,10 @@ const UI = struct {
         self.closePowerEvents();
         for (self.inputs[0..self.input_count]) |input| {
             const release: c_int = 0;
-            _ = c.ioctl(input.fd, c.EVIOCGRAB, release);
-            _ = c.close(input.fd);
+            if (c.ioctl(input.fd, c.EVIOCGRAB, release) != 0)
+                core.log(self.io, self.allocator, "cannot release input device fd {d}: errno {d}", .{ input.fd, errnoValue() });
+            if (c.close(input.fd) != 0)
+                core.log(self.io, self.allocator, "cannot close input device fd {d}: errno {d}", .{ input.fd, errnoValue() });
         }
         self.input_count = 0;
         if (self.text_ready) _ = c.fbink_free_ot_fonts_v2(&self.text_config);
@@ -213,16 +233,24 @@ const UI = struct {
             const mt = axisInfo(input.fd, c.ABS_MT_POSITION_X, &input.min_x, &input.max_x) and
                 axisInfo(input.fd, c.ABS_MT_POSITION_Y, &input.min_y, &input.max_y);
             if (!mt) {
-                _ = axisInfo(input.fd, c.ABS_X, &input.min_x, &input.max_x);
-                _ = axisInfo(input.fd, c.ABS_Y, &input.min_y, &input.max_y);
+                const legacy = axisInfo(input.fd, c.ABS_X, &input.min_x, &input.max_x) and
+                    axisInfo(input.fd, c.ABS_Y, &input.min_y, &input.max_y);
+                if (!legacy and devices[i].type & c.INPUT_TOUCHSCREEN != 0)
+                    core.log(self.io, self.allocator, "input device fd {d} has no usable touch axes", .{input.fd});
             }
             const grab: c_int = 1;
-            _ = c.ioctl(input.fd, c.EVIOCGRAB, grab);
+            if (c.ioctl(input.fd, c.EVIOCGRAB, grab) != 0)
+                core.log(self.io, self.allocator, "cannot grab input device fd {d}: errno {d}", .{ input.fd, errnoValue() });
             const flags = c.fcntl(input.fd, c.F_GETFL);
-            if (flags >= 0) _ = c.fcntl(input.fd, c.F_SETFL, flags | c.O_NONBLOCK);
+            if (flags < 0)
+                core.log(self.io, self.allocator, "cannot read input flags for fd {d}: errno {d}", .{ input.fd, errnoValue() })
+            else if (c.fcntl(input.fd, c.F_SETFL, flags | c.O_NONBLOCK) < 0)
+                core.log(self.io, self.allocator, "cannot make input fd {d} nonblocking: errno {d}", .{ input.fd, errnoValue() });
             self.inputs[self.input_count] = input;
             self.input_count += 1;
         }
+        if (i < count)
+            core.log(self.io, self.allocator, "input scan found {d} devices; only the first {d} are supported", .{ count, max_inputs });
         if (self.input_count == 0) return error.NoInputDevices;
     }
 
@@ -230,7 +258,10 @@ const UI = struct {
         const value: c_int = if (grab) 1 else 0;
         var success = true;
         for (self.inputs[0..self.input_count]) |input| {
-            if (c.ioctl(input.fd, c.EVIOCGRAB, value) != 0) success = false;
+            if (c.ioctl(input.fd, c.EVIOCGRAB, value) != 0) {
+                success = false;
+                core.log(self.io, self.allocator, "cannot {s} input device fd {d}: errno {d}", .{ if (grab) "grab" else "release", input.fd, errnoValue() });
+            }
         }
         return success;
     }
@@ -259,7 +290,10 @@ const UI = struct {
         });
         const output = child.stdout.?;
         const flags = c.fcntl(output.handle, c.F_GETFL);
-        if (flags >= 0) _ = c.fcntl(output.handle, c.F_SETFL, flags | c.O_NONBLOCK);
+        if (flags < 0)
+            core.log(self.io, self.allocator, "cannot read screen-saver monitor flags: errno {d}", .{errnoValue()})
+        else if (c.fcntl(output.handle, c.F_SETFL, flags | c.O_NONBLOCK) < 0)
+            core.log(self.io, self.allocator, "cannot make screen-saver monitor nonblocking: errno {d}", .{errnoValue()});
         self.power_file = output;
         self.power_child = child;
     }
@@ -288,7 +322,7 @@ const UI = struct {
     }
 
     fn redrawAfterResume(self: *UI, statusbar_owned: bool) void {
-        if (statusbar_owned) serviceCommand(self.io, "/sbin/stop");
+        if (statusbar_owned) serviceCommand(self.io, self.allocator, "/sbin/stop");
         self.reinit() catch |err| core.log(self.io, self.allocator, "FBInk reinit after unlock failed: {s}", .{@errorName(err)});
         self.draw();
     }
@@ -325,9 +359,17 @@ const UI = struct {
             self.closePowerEvents();
             return;
         }
-        if (got < 0) return;
+        if (got < 0) {
+            const read_errno = errnoValue();
+            if (!transientReadError(read_errno)) {
+                core.log(self.io, self.allocator, "cannot read Kindle screen-saver events: errno {d}; monitor disabled", .{read_errno});
+                self.closePowerEvents();
+            }
+            return;
+        }
         const count: usize = @intCast(got);
         if (count > self.power_buffer.len - self.power_buffer_length - 1) {
+            core.log(self.io, self.allocator, "Kindle screen-saver event exceeded the {d}-byte buffer; event discarded", .{self.power_buffer.len});
             self.power_buffer_length = 0;
             return;
         }
@@ -345,10 +387,23 @@ const UI = struct {
         return self.nav[self.depth].?;
     }
 
+    fn renderFailure(self: *UI, operation: []const u8, code: c_int) void {
+        if (self.render_error_reported) return;
+        self.render_error_reported = true;
+        core.log(self.io, self.allocator, "FBInk render failed during {s}: code {d}", .{ operation, code });
+    }
+
+    fn renderAllocationFailure(self: *UI, operation: []const u8, err: anyerror) void {
+        if (self.render_error_reported) return;
+        self.render_error_reported = true;
+        core.log(self.io, self.allocator, "cannot allocate {s} while rendering: {s}", .{ operation, @errorName(err) });
+    }
+
     fn drawLine(self: *UI, x: u32, y: u32, width: u32, height: u32, gray: u8) void {
         if (width == 0 or height == 0) return;
         var rect: c.FBInkRect = .{ .left = @intCast(x), .top = @intCast(y), .width = @intCast(width), .height = @intCast(height) };
-        _ = c.fbink_fill_rect_gray(self.fbfd, &self.draw_config, &rect, false, gray);
+        const result = c.fbink_fill_rect_gray(self.fbfd, &self.draw_config, &rect, false, gray);
+        if (result < 0) self.renderFailure("rectangle", result);
     }
 
     fn roundedOutline(self: *UI, x: u32, y: u32, width: u32, height: u32, radius_arg: u32, gray: u8) void {
@@ -373,7 +428,10 @@ const UI = struct {
                 .{ .x = cx1 - px, .y = cy2 + py }, .{ .x = cx1 - py, .y = cy2 + px },
                 .{ .x = cx2 + px, .y = cy2 + py }, .{ .x = cx2 + py, .y = cy2 + px },
             };
-            for (points) |point| _ = c.fbink_put_pixel_gray(self.fbfd, @intCast(point.x), @intCast(point.y), gray);
+            for (points) |point| {
+                const result = c.fbink_put_pixel_gray(self.fbfd, @intCast(point.x), @intCast(point.y), gray);
+                if (result < 0) self.renderFailure("pixel", result);
+            }
             py += 1;
             if (decision < 0)
                 decision += 2 * py + 1
@@ -397,7 +455,10 @@ const UI = struct {
     }
 
     fn printAreaWithFont(self: *UI, text: []const u8, x: u32, y: u32, width: u32, height: u32, size: u32, centered: bool, font: ?*const c.FBInkOTConfig) void {
-        const text_z = self.allocator.dupeZ(u8, text) catch return;
+        const text_z = self.allocator.dupeZ(u8, text) catch |err| {
+            self.renderAllocationFailure("text", err);
+            return;
+        };
         defer self.allocator.free(text_z);
         if (font) |selected| {
             var config = selected.*;
@@ -412,13 +473,15 @@ const UI = struct {
             fb_draw.valign = c.CENTER;
             fb_draw.is_centered = centered;
             fb_draw.is_bgless = true;
-            _ = c.fbink_print_ot(self.fbfd, text_z.ptr, &config, &fb_draw, null);
+            const result = c.fbink_print_ot(self.fbfd, text_z.ptr, &config, &fb_draw, null);
+            if (result < 0) self.renderFailure("OpenType text", result);
         } else {
             var fb_draw = self.draw_config;
             fb_draw.hoffset = @intCast(if (centered) x + width / 2 else x);
             fb_draw.voffset = @intCast(y + (height -| self.state.font_h) / 2);
             fb_draw.is_centered = centered;
-            _ = c.fbink_print(self.fbfd, text_z.ptr, &fb_draw);
+            const result = c.fbink_print(self.fbfd, text_z.ptr, &fb_draw);
+            if (result < 0) self.renderFailure("fallback text", result);
         }
     }
 
@@ -427,7 +490,10 @@ const UI = struct {
     }
 
     fn measureText(self: *UI, text: []const u8, size: u32, font: *const c.FBInkOTConfig) u32 {
-        const text_z = self.allocator.dupeZ(u8, text) catch return 0;
+        const text_z = self.allocator.dupeZ(u8, text) catch |err| {
+            self.renderAllocationFailure("text measurement", err);
+            return 0;
+        };
         defer self.allocator.free(text_z);
         var config = font.*;
         config.margins = std.mem.zeroes(@TypeOf(config.margins));
@@ -441,15 +507,25 @@ const UI = struct {
         fb_draw.is_centered = false;
         fb_draw.no_refresh = true;
         var fit: c.FBInkOTFit = std.mem.zeroes(c.FBInkOTFit);
-        if (c.fbink_print_ot(self.fbfd, text_z.ptr, &config, &fb_draw, &fit) < 0) return 0;
+        const result = c.fbink_print_ot(self.fbfd, text_z.ptr, &config, &fb_draw, &fit);
+        if (result < 0) {
+            self.renderFailure("text measurement", result);
+            return 0;
+        }
         return fit.bbox.width;
     }
 
     fn drawEntry(self: *UI, entry: *const core.Entry, x: u32, y: u32, width: u32, height: u32, size: u32) void {
-        const label = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ entry.name, if (entry.collated) "+" else "" }) catch return;
+        const label = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ entry.name, if (entry.collated) "+" else "" }) catch |err| {
+            self.renderAllocationFailure("entry label", err);
+            return;
+        };
         defer self.allocator.free(label);
         if (!self.text_ready or !self.symbols_ready) {
-            const fallback = std.fmt.allocPrint(self.allocator, "{s}{s}{s}", .{ if (entry.checked) "[x] " else "", label, if (entry.children.items.len > 0) " v" else "" }) catch return;
+            const fallback = std.fmt.allocPrint(self.allocator, "{s}{s}{s}", .{ if (entry.checked) "[x] " else "", label, if (entry.children.items.len > 0) " v" else "" }) catch |err| {
+                self.renderAllocationFailure("fallback entry label", err);
+                return;
+            };
             defer self.allocator.free(fallback);
             self.printArea(fallback, x, y, width, height, size, true);
             return;
@@ -495,12 +571,14 @@ const UI = struct {
     }
 
     fn draw(self: *UI) void {
+        self.render_error_reported = false;
         var clear = self.draw_config;
         clear.bg_color = c.BG_WHITE;
         clear.is_bgless = false;
         clear.wfm_mode = c.WFM_GC16;
         clear.no_refresh = true;
-        _ = c.fbink_cls(self.fbfd, &clear, null, false);
+        const clear_result = c.fbink_cls(self.fbfd, &clear, null, false);
+        if (clear_result < 0) self.renderFailure("screen clear", clear_result);
         const menu = self.currentMenu();
         const outer_x = self.gap / 2;
         const right_x = self.state.view_width - outer_x - self.side_width;
@@ -510,7 +588,10 @@ const UI = struct {
         const radius = @max(8, self.state.view_width / 85);
         self.roundedOutline(outer_x, self.list_y, self.side_width, self.list_height, radius, if (self.depth > 0) 55 else 170);
         self.roundedOutline(right_x, self.list_y, self.side_width, self.list_height, radius, if (pages > 1) 55 else 170);
-        const trail = self.breadcrumb() catch "";
+        const trail = self.breadcrumb() catch |err| trail: {
+            self.renderAllocationFailure("breadcrumb", err);
+            break :trail "";
+        };
         defer if (trail.len > 0) self.allocator.free(trail);
         self.printArea(trail, outer_x, 0, self.state.view_width - 2 * outer_x, self.top_height, self.chrome_text_size, false);
         const final_page = self.page + 1 == pages;
@@ -528,20 +609,31 @@ const UI = struct {
         self.drawTriangle(outer_x + self.side_width / 2, self.list_y + self.list_height / 2, true, if (self.depth > 0) 0 else 165);
         self.drawTriangle(right_x + self.side_width / 2, self.list_y + self.list_height / 2, false, if (pages > 1) 0 else 165);
         const status = std.mem.sliceTo(&self.status, 0);
-        const footer = if (status.len > 0) self.allocator.dupe(u8, status) catch return else std.fmt.allocPrint(self.allocator, "Entries {d} - {d} of {d} • KUAL Next {s} • {s}", .{
+        const footer = if (status.len > 0) self.allocator.dupe(u8, status) catch |err| {
+            self.renderAllocationFailure("status text", err);
+            return;
+        } else std.fmt.allocPrint(self.allocator, "Entries {d} - {d} of {d} • KUAL Next {s} • {s}", .{
             first + 1,
             @min(first + page_rows, total),
             total,
             options.version,
             std.mem.sliceTo(&self.state.device_name, 0),
-        }) catch return;
+        }) catch |err| {
+            self.renderAllocationFailure("footer text", err);
+            return;
+        };
         defer self.allocator.free(footer);
         self.printArea(footer, outer_x, self.state.view_height - self.status_height, self.state.view_width - 2 * outer_x, self.status_height, self.chrome_text_size, false);
         var refresh = self.draw_config;
         refresh.no_refresh = false;
         refresh.wfm_mode = c.WFM_GC16;
-        if (c.fbink_refresh(self.fbfd, 0, 0, 0, 0, &refresh) >= 0)
-            _ = c.fbink_wait_for_complete(self.fbfd, c.LAST_MARKER);
+        const refresh_result = c.fbink_refresh(self.fbfd, 0, 0, 0, 0, &refresh);
+        if (refresh_result < 0) {
+            self.renderFailure("full refresh", refresh_result);
+        } else {
+            const wait_result = c.fbink_wait_for_complete(self.fbfd, c.LAST_MARKER);
+            if (wait_result < 0) self.renderFailure("refresh wait", wait_result);
+        }
     }
 
     fn transformTouch(self: *UI, input: *InputDevice, raw_x: c_int, raw_y: c_int) struct { x: c_int, y: c_int } {
@@ -604,7 +696,18 @@ const UI = struct {
         var events: [32]c.struct_input_event = undefined;
         const bytes = std.mem.asBytes(&events);
         const got = c.read(input.fd, bytes.ptr, bytes.len);
-        if (got <= 0) return .{};
+        if (got <= 0) {
+            const read_errno = if (got < 0) errnoValue() else 0;
+            if (!input.read_error_reported and (got == 0 or !transientReadError(read_errno))) {
+                if (got == 0)
+                    core.log(self.io, self.allocator, "input device fd {d} reached end of file", .{input.fd})
+                else
+                    core.log(self.io, self.allocator, "cannot read input device fd {d}: errno {d}", .{ input.fd, read_errno });
+                input.read_error_reported = true;
+            }
+            return .{};
+        }
+        input.read_error_reported = false;
         var result: TapResult = .{};
         const count: usize = @intCast(@divFloor(got, @sizeOf(c.struct_input_event)));
         for (events[0..count]) |event| {
@@ -648,11 +751,15 @@ const UI = struct {
 
     fn tapFeedback(self: *UI, y: u32) void {
         var rect: c.FBInkRect = .{ .left = @intCast(self.button_x), .top = @intCast(y), .width = @intCast(self.button_width), .height = @intCast(self.button_height) };
-        _ = c.fbink_invert_rect(self.fbfd, &rect, false);
+        const invert_result = c.fbink_invert_rect(self.fbfd, &rect, false);
+        if (invert_result < 0)
+            core.log(self.io, self.allocator, "FBInk tap feedback invert failed: code {d}", .{invert_result});
         var config = self.draw_config;
         config.wfm_mode = c.WFM_DU;
         config.no_refresh = false;
-        _ = c.fbink_refresh_rect(self.fbfd, &rect, &config);
+        const refresh_result = c.fbink_refresh_rect(self.fbfd, &rect, &config);
+        if (refresh_result < 0)
+            core.log(self.io, self.allocator, "FBInk tap feedback refresh failed: code {d}", .{refresh_result});
     }
 };
 
@@ -661,20 +768,31 @@ fn stopHandler(_: c_int) callconv(.c) void {
     stopping = 1;
 }
 
-fn serviceCommand(io: Io, path: []const u8) void {
-    var child = std.process.spawn(io, .{ .argv = &.{ path, "statusbar" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore }) catch return;
-    _ = child.wait(io) catch {};
+fn serviceCommand(io: Io, allocator: std.mem.Allocator, path: []const u8) void {
+    var child = std.process.spawn(io, .{ .argv = &.{ path, "statusbar" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore }) catch |err| {
+        core.log(io, allocator, "cannot run {s} statusbar: {s}", .{ path, @errorName(err) });
+        return;
+    };
+    const term = child.wait(io) catch |err| {
+        core.log(io, allocator, "cannot wait for {s} statusbar: {s}", .{ path, @errorName(err) });
+        return;
+    };
+    switch (term) {
+        .exited => |code| if (code != 0) core.log(io, allocator, "{s} statusbar exited with status {d}", .{ path, code }),
+        .signal => |signal| core.log(io, allocator, "{s} statusbar terminated by signal {d}", .{ path, @intFromEnum(signal) }),
+        .stopped => |signal| core.log(io, allocator, "{s} statusbar stopped by signal {d}", .{ path, @intFromEnum(signal) }),
+        .unknown => |status| core.log(io, allocator, "{s} statusbar returned unknown status {d}", .{ path, status }),
+    }
 }
 
-fn openLog(io: Io) ?Io.File {
+fn openLog(io: Io) !Io.File {
     const cwd = Io.Dir.cwd();
     const file = cwd.openFile(io, core.default_log, .{ .mode = .write_only }) catch
-        cwd.createFile(io, core.default_log, .{ .truncate = false, .permissions = .fromMode(0o644) }) catch null;
-    if (file) |actual| {
-        const length = actual.length(io) catch return actual;
-        var reader = actual.readerStreaming(io, &.{});
-        reader.seekTo(length) catch return actual;
-    }
+        try cwd.createFile(io, core.default_log, .{ .truncate = false, .permissions = .fromMode(0o644) });
+    errdefer file.close(io);
+    const length = try file.length(io);
+    var reader = file.readerStreaming(io, &.{});
+    try reader.seekTo(length);
     return file;
 }
 
@@ -689,13 +807,19 @@ fn setStatus(ui: *UI, text: []const u8) void {
 
 fn showCurrentDate(ui: *UI) void {
     const now: u64 = @intCast(@max(0, @divFloor(Io.Clock.real.now(ui.io).nanoseconds, std.time.ns_per_s)));
-    const date = core.formatDisplayDate(ui.allocator, now) catch return;
+    const date = core.formatDisplayDate(ui.allocator, now) catch |err| {
+        core.log(ui.io, ui.allocator, "cannot format current date: {s}", .{@errorName(err)});
+        return;
+    };
     defer ui.allocator.free(date);
     setStatus(ui, date);
 }
 
 fn notifyDocumentIndexer(ui: *UI) void {
-    const log_file = openLog(ui.io);
+    const log_file: ?Io.File = openLog(ui.io) catch |err| log: {
+        core.log(ui.io, ui.allocator, "cannot open action log for document index notification: {s}", .{@errorName(err)});
+        break :log null;
+    };
     defer if (log_file) |file| file.close(ui.io);
     _ = std.process.spawn(ui.io, .{
         .argv = &.{ "dbus-send", "--system", "/default", "com.lab126.powerd.resuming", "int32:1" },
@@ -718,7 +842,10 @@ fn internalMessage(ui: *UI, entry: *const core.Entry) void {
 fn spawnAction(ui: *UI, entry: *core.Entry) !void {
     const command = try actionCommand(ui.allocator, entry);
     defer ui.allocator.free(command);
-    const log_file = openLog(ui.io);
+    const log_file: ?Io.File = openLog(ui.io) catch |err| log: {
+        core.log(ui.io, ui.allocator, "cannot open action log for '{s}': {s}", .{ entry.name, @errorName(err) });
+        break :log null;
+    };
     defer if (log_file) |file| file.close(ui.io);
     _ = try std.process.spawn(ui.io, .{
         .argv = &.{ "/bin/sh", "-c", command },
@@ -730,8 +857,14 @@ fn spawnAction(ui: *UI, entry: *core.Entry) !void {
 }
 
 fn execAndExit(ui: *UI, entry: *const core.Entry) u8 {
-    const command = actionCommand(ui.allocator, entry) catch return 127;
-    const log_file = openLog(ui.io);
+    const command = actionCommand(ui.allocator, entry) catch |err| {
+        core.log(ui.io, ui.allocator, "cannot build command for '{s}': {s}", .{ entry.name, @errorName(err) });
+        return 127;
+    };
+    const log_file: ?Io.File = openLog(ui.io) catch |err| log: {
+        core.log(ui.io, ui.allocator, "cannot open action log for '{s}': {s}", .{ entry.name, @errorName(err) });
+        break :log null;
+    };
     if (log_file) |file| {
         if (c.dup2(file.handle, c.STDERR_FILENO) < 0) core.log(ui.io, ui.allocator, "cannot redirect action stderr", .{});
         file.close(ui.io);
@@ -757,6 +890,8 @@ fn reloadMenu(ui: *UI, menu: *core.Menu, errors: *core.Errors) !void {
     errors.* = core.Errors.init(allocator);
     menu.* = try core.Menu.init(allocator, io, extensions, model);
     menu.load(errors) catch |err| if (err != error.EmptyMenu) return err;
+    for (errors.items.items) |item|
+        core.log(io, ui.allocator, "menu error in {s}: {s}", .{ item.source, item.message });
     ui.depth = 0;
     ui.page = 0;
     @memset(&ui.status, 0);
@@ -804,12 +939,18 @@ fn handleTap(ui: *UI, menu: *core.Menu, errors: *core.Errors, tap: TapResult, st
                     const mode = if (entry.builtin_action == .sort_abc) "ABC" else "123";
                     core.setSortMode(ui.allocator, ui.io, menu.extensions_dir, mode) catch |err| {
                         setStatus(ui, @errorName(err));
+                        core.log(ui.io, ui.allocator, "cannot set sort mode to {s}: {s}", .{ mode, @errorName(err) });
                         return null;
                     };
-                    try reloadMenu(ui, menu, errors);
+                    reloadMenu(ui, menu, errors) catch |err| {
+                        setStatus(ui, @errorName(err));
+                        core.log(ui.io, ui.allocator, "cannot reload menus after changing sort mode: {s}", .{@errorName(err)});
+                        return null;
+                    };
                 } else if (entry.builtin_action == .save_log) {
                     const destination = core.archiveLog(ui.allocator, ui.io, core.default_log, core.default_documents, @intCast(@max(0, @divFloor(Io.Clock.real.now(ui.io).nanoseconds, std.time.ns_per_s)))) catch |err| {
                         setStatus(ui, @errorName(err));
+                        core.log(ui.io, ui.allocator, "cannot archive log to {s}: {s}", .{ core.default_documents, @errorName(err) });
                         return null;
                     };
                     ui.allocator.free(destination);
@@ -820,16 +961,24 @@ fn handleTap(ui: *UI, menu: *core.Menu, errors: *core.Errors, tap: TapResult, st
                     if (entry.exit_menu) {
                         ui.cleanup();
                         if (statusbar_restore_pending.*) {
-                            serviceCommand(ui.io, "/sbin/start");
+                            serviceCommand(ui.io, ui.allocator, "/sbin/start");
                             statusbar_restore_pending.* = false;
                         }
                         return execAndExit(ui, entry);
                     }
-                    try spawnAction(ui, entry);
+                    spawnAction(ui, entry) catch |err| {
+                        setStatus(ui, @errorName(err));
+                        core.log(ui.io, ui.allocator, "cannot launch action '{s}' from {s}: {s}", .{ entry.name, entry.working_dir, @errorName(err) });
+                        return null;
+                    };
                     if (entry.show_date) showCurrentDate(ui);
                     if (entry.refresh_after) {
                         Io.sleep(ui.io, .fromMilliseconds(250), .awake) catch {};
-                        try reloadMenu(ui, menu, errors);
+                        reloadMenu(ui, menu, errors) catch |err| {
+                            setStatus(ui, @errorName(err));
+                            core.log(ui.io, ui.allocator, "cannot reload menus after action '{s}': {s}", .{ entry.name, @errorName(err) });
+                            return null;
+                        };
                         Io.sleep(ui.io, .fromMilliseconds(750), .awake) catch {};
                     }
                 }
@@ -847,12 +996,12 @@ pub fn run(allocator: std.mem.Allocator, io: Io, menu: *core.Menu, errors: *core
     };
     defer ui.cleanup();
     var statusbar_restore_pending = statusbar_owned;
-    defer if (statusbar_restore_pending) serviceCommand(io, "/sbin/start");
+    defer if (statusbar_restore_pending) serviceCommand(io, allocator, "/sbin/start");
     _ = c.signal(c.SIGTERM, stopHandler);
     _ = c.signal(c.SIGINT, stopHandler);
     _ = c.signal(c.SIGQUIT, stopHandler);
     Io.sleep(io, .fromMilliseconds(500), .awake) catch {};
-    ui.reinit() catch {};
+    ui.reinit() catch |err| core.log(io, allocator, "FBInk reinit before first draw failed: {s}", .{@errorName(err)});
     ui.draw();
     while (stopping == 0) {
         var fds: [max_inputs + 1]c.struct_pollfd = undefined;
@@ -861,7 +1010,12 @@ pub fn run(allocator: std.mem.Allocator, io: Io, menu: *core.Menu, errors: *core
         if (monitor_power) fds[0] = .{ .fd = ui.power_file.?.handle, .events = c.POLLIN, .revents = 0 };
         for (ui.inputs[0..ui.input_count], 0..) |input, i| fds[input_offset + i] = .{ .fd = input.fd, .events = c.POLLIN, .revents = 0 };
         const ready = c.poll(&fds, @intCast(input_offset + ui.input_count), ui.resumeTimeout());
-        if (ready < 0) continue;
+        if (ready < 0) {
+            const poll_errno = errnoValue();
+            if (poll_errno == c.EINTR) continue;
+            core.log(io, allocator, "input poll failed: errno {d}", .{poll_errno});
+            return 1;
+        }
         if (monitor_power and fds[0].revents & (c.POLLIN | c.POLLHUP | c.POLLERR) != 0)
             ui.readPowerEvents(statusbar_owned);
         var i: usize = 0;

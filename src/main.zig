@@ -51,7 +51,10 @@ pub fn main(init: std.process.Init) !void {
     const environment = init.minimal.environ;
     const env_model = environment.getPosix("KUAL_MODEL");
     const probed_model = if (!options.host and model_arg == null and (env_model == null or env_model.?.len == 0))
-        ui.probeModel(allocator) catch null
+        ui.probeModel(allocator) catch |err| result: {
+            core.log(init.io, allocator, "cannot detect Kindle model with FBInk: {s}", .{@errorName(err)});
+            break :result null;
+        }
     else
         null;
     const model = model_arg orelse (if (env_model != null and env_model.?.len > 0) env_model.? else probed_model orelse "Unknown");
@@ -61,7 +64,10 @@ pub fn main(init: std.process.Init) !void {
     defer menu.deinit();
     menu.load(&errors) catch |err| switch (err) {
         error.EmptyMenu => {},
-        else => return err,
+        else => {
+            if (!options.host) core.log(init.io, allocator, "cannot load extension menus: {s}", .{@errorName(err)});
+            return err;
+        },
     };
     if (validate) {
         var stdout_buffer: [4096]u8 = undefined;
@@ -82,6 +88,8 @@ pub fn main(init: std.process.Init) !void {
         try stderr.interface.flush();
         std.process.exit(2);
     }
+    for (errors.items.items) |item|
+        core.log(init.io, allocator, "menu error in {s}: {s}", .{ item.source, item.message });
     const statusbar_owned = if (environment.getPosix("KUAL_NEXT_STATUSBAR_STOPPED")) |value| std.mem.eql(u8, value, "1") else false;
     std.process.exit(try ui.run(allocator, init.io, &menu, &errors, statusbar_owned));
 }

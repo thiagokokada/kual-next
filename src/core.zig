@@ -363,7 +363,11 @@ const ExtensionFile = struct {
 
 fn discoverDir(menu: *Menu, path: []const u8, depth: usize, limit: usize, follow: bool, exclude: ?[]const u8, files: *std.ArrayList(ExtensionFile), seen: *std.ArrayList(std.Io.File.INode), errors: *Errors) !void {
     const allocator = menu.arenaAllocator();
-    const stat = Io.Dir.cwd().statFile(menu.io, path, .{ .follow_symlinks = follow }) catch return;
+    const stat = Io.Dir.cwd().statFile(menu.io, path, .{ .follow_symlinks = follow }) catch |err| {
+        if (depth == 0 or err != error.FileNotFound)
+            try errors.add(path, "cannot inspect directory: {s}", .{@errorName(err)});
+        return;
+    };
     if (stat.kind != .directory) return;
     for (seen.items) |inode| if (inode == stat.inode) return;
     try seen.append(allocator, stat.inode);
@@ -376,7 +380,11 @@ fn discoverDir(menu: *Menu, path: []const u8, depth: usize, limit: usize, follow
     while (try iterator.next(menu.io)) |entry| {
         const child = try join(allocator, path, entry.name);
         if (excludedPath(menu.extensions_dir, child, exclude)) continue;
-        const child_stat = Io.Dir.cwd().statFile(menu.io, child, .{ .follow_symlinks = follow }) catch continue;
+        const child_stat = Io.Dir.cwd().statFile(menu.io, child, .{ .follow_symlinks = follow }) catch |err| {
+            if (err != error.FileNotFound)
+                try errors.add(child, "cannot inspect path: {s}", .{@errorName(err)});
+            continue;
+        };
         if (child_stat.kind == .directory and depth < limit) {
             try discoverDir(menu, child, depth + 1, limit, follow, exclude, files, seen, errors);
         } else if (child_stat.kind == .file and std.mem.eql(u8, entry.name, "config.xml")) {
@@ -880,12 +888,20 @@ pub fn privilegeIndicator(is_root: bool) []const u8 {
 
 pub fn log(io: Io, allocator: Allocator, comptime fmt: []const u8, args: anytype) void {
     const message = std.fmt.allocPrint(allocator, fmt ++ "\n", args) catch return;
+    defer allocator.free(message);
     const cwd = Io.Dir.cwd();
     var file = cwd.openFile(io, default_log, .{ .mode = .write_only }) catch
-        cwd.createFile(io, default_log, .{ .truncate = false, .permissions = .fromMode(0o644) }) catch return;
+        cwd.createFile(io, default_log, .{ .truncate = false, .permissions = .fromMode(0o644) }) catch {
+        Io.File.stderr().writeStreamingAll(io, message) catch {};
+        return;
+    };
     defer file.close(io);
-    const offset = file.length(io) catch return;
-    file.writePositionalAll(io, message, offset) catch return;
+    const offset = file.length(io) catch {
+        Io.File.stderr().writeStreamingAll(io, message) catch {};
+        return;
+    };
+    file.writePositionalAll(io, message, offset) catch
+        Io.File.stderr().writeStreamingAll(io, message) catch {};
 }
 
 pub fn setSortMode(allocator: Allocator, io: Io, extensions_dir: []const u8, mode: []const u8) !void {
