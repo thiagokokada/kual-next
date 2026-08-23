@@ -164,9 +164,11 @@ Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
 
 ## Releases
 
-`VERSION` is the single release version source. After the version change has
+The `.version` field in `build.zig.zon` is the single release version source.
+After the version change has
 landed on `main` and CI has passed, run the `Release` workflow. It derives the
-stable SemVer tag from `VERSION` and creates it at the exact `main` commit that
-it successfully built. If the tag already exists, the workflow aborts; existing
-tags are never moved. It publishes the package and its SHA-256 checksum with
-generated release notes, and does not publish prereleases.
+stable SemVer tag from `build.zig.zon` and creates it at the exact `main`
+commit that it successfully built. If the tag already exists, the workflow
+aborts; existing tags are never moved. It publishes the package and its
+SHA-256 checksum with generated release notes, and does not publish
+prereleases.

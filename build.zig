@@ -17,13 +17,22 @@ pub fn build(b: *std.Build) void {
         @panic("KUAL Next requires Zig 0.16.x");
     }
 
-    const version_text = b.build_root.handle.readFileAlloc(
+    const manifest_text = b.build_root.handle.readFileAlloc(
         b.graph.io,
-        "VERSION",
+        "build.zig.zon",
         b.allocator,
-        .limited(128),
-    ) catch @panic("unable to read VERSION");
-    const version = std.mem.trim(u8, version_text, " \t\r\n");
+        .limited(1024 * 1024),
+    ) catch @panic("unable to read build.zig.zon");
+    const manifest_z = b.allocator.dupeZ(u8, manifest_text) catch @panic("out of memory");
+    const manifest = std.zon.parse.fromSliceAlloc(
+        struct { version: []const u8 },
+        b.allocator,
+        manifest_z,
+        null,
+        .{ .ignore_unknown_fields = true },
+    ) catch @panic("unable to parse version from build.zig.zon");
+    const version = manifest.version;
+    _ = std.SemanticVersion.parse(version) catch @panic("build.zig.zon version must be SemVer");
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "version", version);
     build_options.addOption(bool, "host", true);

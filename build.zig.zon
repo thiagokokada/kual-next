@@ -1,13 +1,12 @@
 .{
     .name = .kual_next,
-    .version = "0.0.0", // Package-manager metadata only; product version comes from VERSION.
+    .version = "0.2.0",
     .fingerprint = 0x11508b69f96d1985, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "VERSION",
         "src",
         "tools",
         "tests",

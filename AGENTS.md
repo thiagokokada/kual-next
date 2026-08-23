@@ -56,8 +56,9 @@ and must not be committed.
 `std.testing.allocator` for leak detection. Treat any test safety or leak
 report as a failed verification.
 
-The root `VERSION` file is the single version source for both the compiled UI
-and package filename. Change it for releases; do not add another version macro.
+The `.version` field in `build.zig.zon` is the single version source for both
+the compiled UI and package filename. Change it for releases; do not add
+another version source.
 
 Format changed first-party Zig files with `zig fmt`. Do not reformat vendored
 sources under `third_party/`.
@@ -113,7 +114,7 @@ structural, behavior, and visual fixes, create separate verified commits for
 each concern. Preserve existing user changes and never rewrite or reset history
 unless explicitly requested.
 
-For a release, update `VERSION`, merge it to `main`, then manually run the
+For a release, update `build.zig.zon`, merge it to `main`, then manually run the
 GitHub `Release` workflow with the matching stable `vMAJOR.MINOR.PATCH` tag. The
 workflow creates the tag at the successfully built `main` commit when it is
 missing, and must never move an existing tag.
