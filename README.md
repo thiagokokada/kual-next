@@ -92,23 +92,27 @@ Enter the pinned Nix environment and run the host tests:
 
 ```sh
 nix develop
-make test
+zig build test
 ```
+
+Use `zig build` (or `zig build host`) for the host validator. `zig build check`
+runs all Zig and shell tests plus the Kindle cross-build and ELF ABI/static-link
+verification. The build rejects Zig versions outside the 0.16.x series.
 
 Validate an extension tree without opening a framebuffer:
 
 ```sh
-build/host/kual-next --validate --extensions /path/to/extensions --model KindlePaperWhite5
+zig-out/host/kual-next --validate --extensions /path/to/extensions --model KindlePaperWhite5
 ```
 
 Build and deploy the package over SSH:
 
 ```sh
 nix develop
-make deploy KINDLE_HOST=root@your-kindle
+zig build deploy -Dkindle-host=root@your-kindle
 ```
 
-`KINDLE_HOST` is required and is never given a repository default. The target
+`-Dkindle-host` is required and is never given a repository default. The target
 honors the `SSH` and `SCP` environment variables, verifies the uploaded archive,
 and refuses to overwrite KUAL Next while it is running. Quit the launcher before
 deploying, then open it again through the Kindle scriptlet UI.
@@ -120,7 +124,7 @@ installed launcher or `/mnt/us/extensions`, quit KUAL Next and run:
 
 ```sh
 nix develop
-make device-ui-test KINDLE_HOST=root@your-kindle
+zig build device-ui-test -Dkindle-host=root@your-kindle
 ```
 
 Optional SSH client flags can be supplied separately, for example
@@ -139,18 +143,20 @@ deleted automatically so it can be inspected after the test.
 
 ## Kindle cross-build
 
-The toolchain setup downloads a prebuilt
-[koxtoolchain](https://github.com/koreader/koxtoolchain), `kindlehf` target
-into `.toolchains/`.
+The pinned Zig 0.16.x compiler cross-builds the launcher and its FBInk/yxml C
+dependencies directly for ARMv7 hard-float Linux with static musl. No separate
+Kindle GCC toolchain is required.
 
 ```sh
 nix develop
-make toolchain
-make check
-make package
+zig build kindle
+zig build check
+zig build package
 ```
 
-The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
+The host and Kindle binaries are written to `zig-out/host/kual-next` and
+`zig-out/kindle/kual-next`. The package is written to
+`dist/kual-next-<version>-kindlehf.zip`. Extract it
 at the Kindle USB storage root for testing. The scriptlet metadata uses the
 bundled `kual-next/icon.png` as its Kindle library cover.
 
