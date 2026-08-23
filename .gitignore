@@ -1,5 +1,7 @@
 /build/
 /dist/
+/.zig-cache/
+/zig-out/
 /.toolchains/
 /.cache/
 /result

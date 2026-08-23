@@ -125,4 +125,49 @@ fi
 grep -q 'invalid JSON menu' "$tmpdir/broken.err"
 ! grep -q 'Broken dependency' "$tmpdir/broken.out"
 
+mkdir -p "$tmpdir/json-compat/extensions/compat"
+printf '%s\n' '<extension><information><id>compat</id></information>' \
+	'<menus><menu type="json">menu.json</menu></menus></extension>' \
+	> "$tmpdir/json-compat/extensions/compat/config.xml"
+printf '%s\n' \
+	'{"unknown":{"future":true},"items":[{"name":"Unicode \u2713 \uD83D\uDE80","action":":","priority":{},"checked":[],"refresh":"wrong","future_field":17},{"name":17,"action":":"},{"name":"Wrong items","items":"not-an-array"}]}' \
+	> "$tmpdir/json-compat/extensions/compat/menu.json"
+if "$binary" --validate --extensions "$tmpdir/json-compat/extensions" \
+	> "$tmpdir/json-compat/tree" 2> "$tmpdir/json-compat/errors"; then
+	echo "structurally invalid menu entries unexpectedly passed validation" >&2
+	exit 1
+fi
+grep -q 'Unicode ✓ 🚀 => :' "$tmpdir/json-compat/tree"
+grep -q 'menu entry is missing name or action/items' "$tmpdir/json-compat/errors"
+
+mkdir -p "$tmpdir/depth/extensions/deep"
+printf '%s\n' '<extension><information><id>deep</id></information>' \
+	'<menus><menu type="json">menu.json</menu></menus></extension>' \
+	> "$tmpdir/depth/extensions/deep/config.xml"
+printf '%s\n' \
+	'{"items":[{"name":"0","items":[{"name":"1","items":[{"name":"2","items":[{"name":"3","items":[{"name":"4","items":[{"name":"5","items":[{"name":"6","items":[{"name":"7","items":[{"name":"8","items":[{"name":"9","items":[{"name":"too deep","action":":"}]}]}]}]}]}]}]}]}]}]}]}' \
+	> "$tmpdir/depth/extensions/deep/menu.json"
+if "$binary" --validate --extensions "$tmpdir/depth/extensions" \
+	> "$tmpdir/depth/tree" 2> "$tmpdir/depth/errors"; then
+	echo "over-depth menu unexpectedly passed validation" >&2
+	exit 1
+fi
+grep -q 'menu exceeds 10 levels' "$tmpdir/depth/errors"
+
+for kind in truncated custom-entity
+do
+	mkdir -p "$tmpdir/xml-$kind/extensions/broken"
+	case "$kind" in
+		truncated) printf '%s\n' '<?probe accepted?><extension><information><id>broken</id></information>' ;;
+		custom-entity) printf '%s\n' '<!DOCTYPE extension [<!ENTITY custom "value">]><extension><information><id>&custom;</id></information></extension>' ;;
+	esac > "$tmpdir/xml-$kind/extensions/broken/config.xml"
+	if "$binary" --validate --extensions "$tmpdir/xml-$kind/extensions" \
+		> "$tmpdir/xml-$kind/tree" 2> "$tmpdir/xml-$kind/errors"; then
+		echo "$kind XML unexpectedly passed validation" >&2
+		exit 1
+	fi
+	test -s "$tmpdir/xml-$kind/errors"
+	grep -q 'config.xml:' "$tmpdir/xml-$kind/errors"
+done
+
 echo "host parser tests passed"
