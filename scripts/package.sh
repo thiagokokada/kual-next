@@ -22,7 +22,7 @@ mkdir -p "$stage/kual-next/bin" "$stage/kual-next/fonts" \
 	"$stage/kual-next/LICENSES" "$stage/documents" "$root/dist"
 cp "$binary" "$stage/kual-next/bin/kual-next"
 cp "$root/LICENSE" "$stage/kual-next/LICENSES/KUAL-Next-GPL-3.0-or-later.txt"
-cp "$root/third_party/YXML-LICENSE" "$stage/kual-next/LICENSES/yxml-MIT.txt"
+cp "$root/third_party/ZIG-XML-LICENSE" "$stage/kual-next/LICENSES/zig-xml-0BSD.txt"
 cp "$root/third_party/MUSL-COPYRIGHT" "$stage/kual-next/LICENSES/musl-MIT.txt"
 cp "$root/assets/fonts/OFL.txt" "$stage/kual-next/LICENSES/Noto-SIL-OFL-1.1.txt"
 cp "$root/third_party/FBInk/LICENSE" "$stage/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"

@@ -20,7 +20,7 @@ for required in \
 	'kual-next/fonts/NotoSansSymbols2-Regular.otf' \
 	'kual-next/LICENSES/KUAL-Next-GPL-3.0-or-later.txt' \
 	'kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt' \
-	'kual-next/LICENSES/yxml-MIT.txt' \
+	'kual-next/LICENSES/zig-xml-0BSD.txt' \
 	'kual-next/LICENSES/musl-MIT.txt'
 do
 	printf '%s\n' "$entries" | grep -Fqx "$required" || {
@@ -28,8 +28,8 @@ do
 		exit 1
 	}
 done
-if printf '%s\n' "$entries" | grep -Fq 'jsmn'; then
-	printf 'Package still contains the removed jsmn dependency\n' >&2
+if printf '%s\n' "$entries" | grep -Eq 'jsmn|yxml'; then
+	printf 'Package still contains a removed parser dependency\n' >&2
 	exit 1
 fi
 if unzip -l "$package" | awk \

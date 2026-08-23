@@ -42,8 +42,8 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
         .link_libc = true,
     });
-    core_module.addIncludePath(b.path("third_party"));
-    core_module.addCSourceFile(.{ .file = b.path("third_party/yxml.c"), .flags = &.{"-std=c11"} });
+    const host_xml = b.dependency("xml", .{ .target = b.graph.host, .optimize = .Debug });
+    core_module.addImport("xml", host_xml.module("xml"));
     const host_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = b.graph.host,
@@ -71,8 +71,8 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSafe,
         .link_libc = true,
     });
-    safe_core.addIncludePath(b.path("third_party"));
-    safe_core.addCSourceFile(.{ .file = b.path("third_party/yxml.c"), .flags = &.{"-std=c11"} });
+    const safe_xml = b.dependency("xml", .{ .target = b.graph.host, .optimize = .ReleaseSafe });
+    safe_core.addImport("xml", safe_xml.module("xml"));
     const safe_unit = b.addTest(.{ .name = "kual-next-tests-safe", .root_module = safe_core });
     const run_safe_unit = b.addRunArtifact(safe_unit);
     const ui_logic_module = b.createModule(.{
@@ -108,8 +108,8 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
         .strip = true,
     });
-    kindle_core.addIncludePath(b.path("third_party"));
-    kindle_core.addCSourceFile(.{ .file = b.path("third_party/yxml.c"), .flags = &.{"-std=c11"} });
+    const kindle_xml = b.dependency("xml", .{ .target = kindle_target, .optimize = .ReleaseSmall });
+    kindle_core.addImport("xml", kindle_xml.module("xml"));
     const ui_module = b.createModule(.{
         .root_source_file = b.path("src/ui_fbink.zig"),
         .target = kindle_target,

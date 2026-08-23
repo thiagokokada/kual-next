@@ -1,6 +1,7 @@
 /dist/
 /.zig-cache/
 /zig-out/
+/zig-pkg/
 /.cache/
 /result
 *.o

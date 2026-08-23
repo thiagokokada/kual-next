@@ -8,8 +8,9 @@ Kindlets, Booklets, pre-hard-float devices, non-JSON menus, and KUAL's legacy
 mailbox/cache protocol are intentionally out of scope.
 
 Keep compatibility with the original KUAL JSON behavior where it is relevant
-to modern extensions. First-party code is Zig; FBInk and yxml are the only C
-dependencies. Use `std.json` and avoid adding a large UI or JSON framework.
+to modern extensions. First-party code is Zig; FBInk is the only C dependency.
+Use `std.json`, use zig-xml for `config.xml`, and avoid adding a large UI or
+JSON framework.
 
 ## Repository layout and dependencies
 
@@ -22,7 +23,7 @@ dependencies. Use `std.json` and avoid adding a large UI or JSON framework.
 - `third_party/FBInk` is a pinned recursive Git submodule. Do not replace it
   with a path outside this repository or modify its upstream sources as part
   of normal project work.
-- `third_party/yxml.c` and `third_party/yxml.h` are the vendored XML parser.
+- zig-xml is pinned through `build.zig.zon` and parses extension metadata.
 
 Initialize dependencies after cloning:
 
@@ -70,8 +71,8 @@ sources under `third_party/`.
 - Keep the device binary statically linked unless a separate design decision
   explicitly changes that constraint.
 - Use Zig filesystem, process, time, and allocation APIs for first-party code.
-  C imports should remain narrow interfaces for FBInk, yxml, Linux device APIs,
-  and musl POSIX regex.
+  C imports should remain narrow interfaces for FBInk, Linux device APIs, and
+  musl POSIX regex.
 - Use the bundled Noto fonts. Never load fonts or resources from the Kindle's
   Java installation.
 - Preserve KUAL semantics for `exitmenu`, `checked`, `refresh`, `status`,

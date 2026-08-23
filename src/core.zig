@@ -2,10 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const posix_regex = @import("regex.zig");
-
-const c = @cImport({
-    @cInclude("yxml.h");
-});
+const xml_parser = @import("xml");
 
 pub const default_extensions = "/mnt/us/extensions";
 pub const default_log = "/var/tmp/kual-next.log";
@@ -401,48 +398,65 @@ fn discoverDir(menu: *Menu, path: []const u8, depth: usize, limit: usize, follow
     }
 }
 
-const XmlError = error{ InvalidEntity, MismatchedClose, ParserCapacity, UnexpectedEof, InvalidSyntax };
+const XmlError = error{ InvalidEntity, MismatchedClose, UnexpectedEof, InvalidSyntax };
 
 fn xmlErrorName(err: anyerror) []const u8 {
     return switch (err) {
         error.InvalidEntity => "invalid entity reference",
         error.MismatchedClose => "mismatched closing element",
-        error.ParserCapacity => "element nesting or name exceeds parser capacity",
         error.UnexpectedEof => "unexpected end of file",
         else => "invalid XML syntax",
     };
 }
 
-fn yxmlError(result: c_int) XmlError {
-    return switch (result) {
-        c.YXML_EREF => error.InvalidEntity,
-        c.YXML_ECLOSE => error.MismatchedClose,
-        c.YXML_ESTACK => error.ParserCapacity,
-        c.YXML_EEOF => error.UnexpectedEof,
+fn zigXmlError(code: xml_parser.Reader.ErrorCode) XmlError {
+    return switch (code) {
+        .entity_reference_undefined, .entity_reference_unclosed, .character_reference_malformed, .character_reference_unclosed, .doctype_unsupported => error.InvalidEntity,
+        .element_end_mismatched => error.MismatchedClose,
+        .unexpected_eof, .element_end_unclosed, .comment_unclosed, .pi_unclosed, .cdata_unclosed, .missing_end_quote => error.UnexpectedEof,
         else => error.InvalidSyntax,
     };
 }
 
+fn appendXmlContent(allocator: Allocator, destination: *std.ArrayList(u8), reader: *xml_parser.Reader, node: xml_parser.Reader.Node) !void {
+    switch (node) {
+        .text => try destination.appendSlice(allocator, try reader.text()),
+        .cdata => try destination.appendSlice(allocator, try reader.cdata()),
+        .entity_reference => {
+            const name = reader.entityReferenceName();
+            const value = xml_parser.predefined_entities.get(name) orelse return error.InvalidEntity;
+            try destination.appendSlice(allocator, value);
+        },
+        .character_reference => {
+            var encoded: [4]u8 = undefined;
+            const length = try std.unicode.utf8Encode(reader.characterReferenceChar(), &encoded);
+            try destination.appendSlice(allocator, encoded[0..length]);
+        },
+        else => {},
+    }
+}
+
 fn parseExtensionXml(allocator: Allocator, xml: []const u8, file: *ExtensionFile) !void {
-    var stack: [4096]u8 = undefined;
-    var parser: c.yxml_t = undefined;
-    c.yxml_init(&parser, &stack, stack.len);
+    var static_reader: xml_parser.Reader.Static = .init(allocator, xml, .{ .namespace_aware = false });
+    defer static_reader.deinit();
+    const reader = &static_reader.interface;
     var id: std.ArrayList(u8) = .empty;
     var menu: std.ArrayList(u8) = .empty;
-    var attr: std.ArrayList(u8) = .empty;
     var depth: i32 = 0;
     var extension_depth: i32 = -1;
     var id_depth: i32 = -1;
     var menu_depth: i32 = -1;
-    var type_attr = false;
     var menu_is_json = false;
-    for (xml) |byte| {
-        const result = c.yxml_parse(&parser, byte);
-        if (result < 0) return yxmlError(result);
-        switch (result) {
-            c.YXML_ELEMSTART => {
+    while (true) {
+        const node = reader.read() catch |err| switch (err) {
+            error.MalformedXml => return zigXmlError(reader.errorCode()),
+            error.ReadFailed => return error.InvalidSyntax,
+            error.OutOfMemory => return err,
+        };
+        switch (node) {
+            .element_start => {
                 depth += 1;
-                const elem = std.mem.span(parser.elem);
+                const elem = reader.elementName();
                 if (extension_depth < 0 and std.mem.eql(u8, elem, "extension")) {
                     extension_depth = depth;
                     file.is_extension = true;
@@ -453,22 +467,17 @@ fn parseExtensionXml(allocator: Allocator, xml: []const u8, file: *ExtensionFile
                     menu_depth = depth;
                     menu_is_json = false;
                     menu.clearRetainingCapacity();
+                    if (reader.attributeIndex("type")) |index| {
+                        const value = try reader.attributeValue(index);
+                        menu_is_json = std.mem.eql(u8, std.mem.trim(u8, value, " \t\r\n"), "json");
+                    }
                 }
             },
-            c.YXML_ATTRSTART => {
-                type_attr = menu_depth == depth and std.mem.eql(u8, std.mem.span(parser.attr), "type");
-                if (type_attr) attr.clearRetainingCapacity();
+            .text, .cdata, .entity_reference, .character_reference => {
+                if (depth == id_depth) try appendXmlContent(allocator, &id, reader, node);
+                if (depth == menu_depth) try appendXmlContent(allocator, &menu, reader, node);
             },
-            c.YXML_ATTRVAL => if (type_attr) try attr.appendSlice(allocator, std.mem.sliceTo(&parser.data, 0)),
-            c.YXML_ATTREND => {
-                if (type_attr) menu_is_json = std.mem.eql(u8, std.mem.trim(u8, attr.items, " \t\r\n"), "json");
-                type_attr = false;
-            },
-            c.YXML_CONTENT => {
-                if (depth == id_depth) try id.appendSlice(allocator, std.mem.sliceTo(&parser.data, 0));
-                if (depth == menu_depth) try menu.appendSlice(allocator, std.mem.sliceTo(&parser.data, 0));
-            },
-            c.YXML_ELEMEND => {
+            .element_end => {
                 if (depth == id_depth) {
                     file.id = try allocator.dupe(u8, std.mem.trim(u8, id.items, " \t\r\n"));
                     id_depth = -1;
@@ -482,11 +491,10 @@ fn parseExtensionXml(allocator: Allocator, xml: []const u8, file: *ExtensionFile
                 if (depth == extension_depth) extension_depth = -1;
                 depth -= 1;
             },
+            .eof => break,
             else => {},
         }
     }
-    const result = c.yxml_eof(&parser);
-    if (result < 0) return yxmlError(result);
 }
 
 fn parseInternal(entry: *Entry, submenu: bool) void {

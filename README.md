@@ -74,7 +74,7 @@ scope.
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
 | Input | Touch, Home/Menu, back, next, and a small set of page-key aliases are supported. KUAL's numeric/QWERTY item shortcuts and Java focus navigation are not. |
 | Configuration | Discovery depth, path exclusion, symlink following, collation, and `ABC`, `ABC!`, and `123` sorting are supported. UI settings such as `KUAL_no_show_status` and the self-management menu are not. |
-| Parsing | `config.xml` is handled by the small, non-validating yxml parser. XML syntax, nesting, entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |
+| Parsing | `config.xml` is handled by zig-xml. XML syntax, nesting, predefined and numeric entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |
 | Fonts | Bundled Noto fonts cover KUAL's standard indicators and many scripts and symbols, but there is no font fallback; unsupported characters may be rendered as squares. |
 | Devices | Only recent ARM hard-float Kindles running firmware 5.16.3 or newer are targeted. Older ARMEL and keyboard-era devices are unsupported. |
 | Menu size | Menus are limited to ten nesting levels and ten visible rows per page. |
@@ -143,9 +143,9 @@ deleted automatically so it can be inspected after the test.
 
 ## Kindle cross-build
 
-The pinned Zig 0.16.x compiler cross-builds the launcher and its FBInk/yxml C
-dependencies directly for ARMv7 hard-float Linux with static musl. No separate
-Kindle GCC toolchain is required.
+The pinned Zig 0.16.x compiler cross-builds the launcher, zig-xml, and the
+FBInk C dependency directly for ARMv7 hard-float Linux with static musl. No
+separate Kindle GCC toolchain is required.
 
 ```sh
 nix develop
