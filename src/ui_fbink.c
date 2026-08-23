@@ -798,7 +798,16 @@ static void ui_draw(UI *ui) {
   FBInkConfig refresh = ui->draw_cfg;
   refresh.no_refresh = false;
   refresh.wfm_mode = WFM_GC16;
-  (void)fbink_refresh(ui->fbfd, 0, 0, 0, 0, &refresh);
+  int rc = fbink_refresh(ui->fbfd, 0, 0, 0, 0, &refresh);
+  if (rc < 0) {
+    kual_log("FBInk full refresh failed: %d", rc);
+  } else {
+    rc = fbink_wait_for_complete(ui->fbfd, LAST_MARKER);
+    if (rc < 0) {
+      kual_log("FBInk full refresh wait failed: %d", rc);
+    }
+  }
+
   if (!ui->screen_saver_active)
     framebuffer_watchdog_arm(ui);
 }
