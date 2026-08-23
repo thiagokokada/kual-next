@@ -2,10 +2,12 @@
 #include "kual.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -19,6 +21,137 @@ static KualEntry *find_entry(KualEntry *parent, const char *name) {
       return nested;
   }
   return NULL;
+}
+
+static void write_text(const char *path, const char *text) {
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  assert(fd >= 0);
+  size_t len = strlen(text), used = 0;
+  while (used < len) {
+    ssize_t written = write(fd, text + used, len - used);
+    assert(written > 0);
+    used += (size_t)written;
+  }
+  assert(close(fd) == 0);
+}
+
+static void assert_text(const char *path, const char *expected) {
+  size_t len = 0;
+  char *actual = kual_read_file(path, &len);
+  assert(actual);
+  assert(len == strlen(expected));
+  assert(!memcmp(actual, expected, len));
+  free(actual);
+}
+
+static void test_sort_mode_update(void) {
+  char directory[] = "/tmp/kual-next-sort.XXXXXX";
+  assert(mkdtemp(directory));
+  char *config_path = kual_join_path(directory, "KUAL.cfg");
+
+  assert(kual_set_sort_mode(directory, "123") == 0);
+  size_t created_len = 0;
+  char *created = kual_read_file(config_path, &created_len);
+  assert(created && created_len > 0);
+  assert(strstr(created, "# KUAL.cfg - created by KUAL Next on "));
+  assert(strstr(created, "KUAL_sort_mode=\"123\"\n"));
+  free(created);
+
+  const char *existing = "# preserved comment\n"
+                         "  KUAL_sort_mode = \"ABC!\"\n"
+                         "KUAL_collate=\"false\"\n"
+                         "KUAL_sort_mode='ABC'\n"
+                         "trailing text without newline";
+  const char *updated = "# preserved comment\n"
+                        "KUAL_sort_mode=\"123\"\n"
+                        "KUAL_collate=\"false\"\n"
+                        "KUAL_sort_mode=\"123\"\n"
+                        "trailing text without newline";
+  write_text(config_path, existing);
+  assert(chmod(config_path, 0600) == 0);
+  assert(kual_set_sort_mode(directory, "123") == 0);
+  assert_text(config_path, updated);
+  struct stat st;
+  assert(stat(config_path, &st) == 0);
+  assert((st.st_mode & 0777) == 0600);
+
+  write_text(config_path, "KUAL_collate=\"true\"");
+  assert(kual_set_sort_mode(directory, "ABC") == 0);
+  assert_text(config_path, "KUAL_collate=\"true\"\nKUAL_sort_mode=\"ABC\"\n");
+
+  write_text(config_path, "KUAL_sort_mode=\"ABC!\"\n");
+  KualMenu menu;
+  KualErrors errors = {0};
+  kual_menu_init(&menu, directory, "KindlePaperWhite5");
+  assert(kual_menu_load(&menu, &errors) == 0);
+  assert(errors.len == 0);
+  KualEntry *special = find_entry(&menu.root, "Sort menu 123");
+  assert(special);
+  assert(special->builtin_action == KUAL_BUILTIN_SORT_123);
+  assert(!special->action);
+  kual_menu_free(&menu);
+  kual_errors_free(&errors);
+
+  assert(kual_set_sort_mode(directory, "123") == 0);
+  KualConfig config;
+  kual_config_init(&config);
+  assert(kual_config_load(&config, config_path, &errors) == 0);
+  assert(!strcmp(kual_config_get(&config, "sort_mode"), "123"));
+  kual_config_free(&config);
+  kual_errors_free(&errors);
+
+  write_text(config_path, "KUAL_sort_mode=\"ABC!\"\n# still here\n");
+  assert(chmod(directory, 0500) == 0);
+  assert(kual_set_sort_mode(directory, "123") == -1);
+  assert(chmod(directory, 0700) == 0);
+  assert_text(config_path, "KUAL_sort_mode=\"ABC!\"\n# still here\n");
+
+  assert(unlink(config_path) == 0);
+  free(config_path);
+  assert(rmdir(directory) == 0);
+}
+
+static void test_log_archive(void) {
+  char directory[] = "/tmp/kual-next-log.XXXXXX";
+  assert(mkdtemp(directory));
+  char *documents = kual_join_path(directory, "documents");
+  assert(mkdir(documents, 0700) == 0);
+  char *source = kual_join_path(directory, "kual-next.log");
+  char *expected = kual_join_path(documents, "KUAL-1970-01-01T00.00+00.00.txt");
+
+  write_text(expected, "old archive\n");
+  write_text(source, "first line\nsecond line\n");
+  assert(chmod(source, 0600) == 0);
+  char *destination = NULL;
+  assert(kual_archive_log(source, documents, 0, &destination) == 0);
+  assert(destination && !strcmp(destination, expected));
+  assert(access(source, F_OK) != 0);
+  assert_text(expected, "first line\nsecond line\n");
+  struct stat st;
+  assert(stat(expected, &st) == 0);
+  assert((st.st_mode & 0777) == 0600);
+  free(destination);
+
+  write_text(source, "preserve on failure\n");
+  char *missing = kual_join_path(directory, "missing/documents");
+  assert(kual_archive_log(source, missing, 0, NULL) == -1);
+  assert_text(source, "preserve on failure\n");
+  free(missing);
+
+  DIR *dir = opendir(documents);
+  assert(dir);
+  struct dirent *entry;
+  while ((entry = readdir(dir)))
+    assert(strncmp(entry->d_name, ".kual-next-log.", 15));
+  closedir(dir);
+
+  assert(unlink(source) == 0);
+  assert(unlink(expected) == 0);
+  assert(rmdir(documents) == 0);
+  assert(rmdir(directory) == 0);
+  free(expected);
+  free(source);
+  free(documents);
 }
 
 static void test_stderr_redirect(void) {
@@ -65,6 +198,8 @@ int main(int argc, char **argv) {
   test_stderr_redirect();
   test_privilege_indicator();
   test_power_event_unlock();
+  test_sort_mode_update();
+  test_log_archive();
   KualMenu menu;
   KualErrors errors = {0};
   kual_menu_init(&menu, argv[1], "KindlePaperWhite5");
@@ -119,13 +254,16 @@ int main(int argc, char **argv) {
   assert(sort_btn->checked_after);
   assert(sort_btn->refresh_after);
   assert(!sort_btn->show_status);
+  assert(sort_btn->builtin_action == KUAL_BUILTIN_SORT_ABC);
+  assert(!sort_btn->action);
 
   KualEntry *quit_btn = find_entry(kual, "\xc3\x97 Quit");
   assert(quit_btn);
   assert(quit_btn->priority == 99);
   assert(quit_btn->exit_menu);
   assert(quit_btn->show_status);
-  assert(!strcmp(quit_btn->action, ":"));
+  assert(quit_btn->builtin_action == KUAL_BUILTIN_QUIT);
+  assert(!quit_btn->action);
 
   kual_menu_free(&menu);
   kual_errors_free(&errors);
@@ -144,6 +282,8 @@ int main(int argc, char **argv) {
     assert(log_btn->checked_after);
     assert(log_btn->show_date);
     assert(!log_btn->show_status);
+    assert(log_btn->builtin_action == KUAL_BUILTIN_SAVE_LOG);
+    assert(!log_btn->action);
     kual_menu_free(&menu);
     kual_errors_free(&errors);
     unlink(KUAL_DEFAULT_LOG);

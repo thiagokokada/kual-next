@@ -768,7 +768,6 @@ static void build_kual_menu(KualMenu *menu, const KualErrors *errors) {
       size_t needed = strlen(base) + strlen(errors->items[i].message) + 3;
       entry->name = kual_xcalloc(needed, 1);
       snprintf(entry->name, needed, "%s: %s", base, errors->items[i].message);
-      entry->action = kual_xstrdup(":");
       entry->internal = kual_xstrdup(errors->items[i].message);
       entry->internal_kind = KUAL_INTERNAL_BREADCRUMB;
       entry->working_dir = kual_xstrdup("/var/tmp");
@@ -802,19 +801,8 @@ static void build_kual_menu(KualMenu *menu, const KualErrors *errors) {
         size_t name_len = strlen("Sort menu ") + strlen(sort_verb) + 1;
         btn->name = kual_xcalloc(name_len, 1);
         snprintf(btn->name, name_len, "Sort menu %s", sort_verb);
-        char *config_path = kual_join_path(menu->extensions_dir, "KUAL.cfg");
-        size_t act_len = strlen(config_path) * 4 + 256;
-        btn->action = kual_xcalloc(act_len, 1);
-        snprintf(
-            btn->action, act_len,
-            "[ -r '%s' ] || echo \"# %s - created on `date`\" >'%s';"
-            "s=$(awk 'BEGIN{nf=1} "
-            "/^\\s*KUAL_sort_mode=/{sub(/=.*/,\"=\\\"%s\\\"\");nf=0} "
-            "{print} END{if(nf) print \"KUAL_sort_mode=\\\"%s\\\"\"}' '%s') && "
-            "[ 0 != ${#s} ] && echo \"$s\" >'%s'",
-            config_path, config_path, config_path, sort_verb, sort_verb,
-            config_path, config_path);
-        free(config_path);
+        btn->builtin_action =
+            is_abc ? KUAL_BUILTIN_SORT_123 : KUAL_BUILTIN_SORT_ABC;
         btn->working_dir = kual_xstrdup("/var/tmp");
         btn->priority = 2;
         btn->exit_menu = false;
@@ -830,10 +818,7 @@ static void build_kual_menu(KualMenu *menu, const KualErrors *errors) {
         if (log_exists) {
           KualEntry *btn = add_child(&kual_menu);
           btn->name = kual_xstrdup("Save and reset KUAL log");
-          btn->action = kual_xstrdup(
-              "mv '" KUAL_DEFAULT_LOG "' \"/mnt/us/documents/KUAL-`date -u "
-              "-Iminutes | sed s/:/./g`.txt\";"
-              "dbus-send --system /default com.lab126.powerd.resuming int32:1");
+          btn->builtin_action = KUAL_BUILTIN_SAVE_LOG;
           btn->working_dir = kual_xstrdup("/var/tmp");
           btn->condition = kual_xstrdup("\"" KUAL_DEFAULT_LOG "\" -z!");
           btn->priority = 3;
@@ -846,7 +831,7 @@ static void build_kual_menu(KualMenu *menu, const KualErrors *errors) {
       } else if (len == 2 && !strncmp(start, "99", 2)) {
         KualEntry *btn = add_child(&kual_menu);
         btn->name = kual_xstrdup("\xc3\x97 Quit");
-        btn->action = kual_xstrdup(":");
+        btn->builtin_action = KUAL_BUILTIN_QUIT;
         btn->working_dir = kual_xstrdup("/var/tmp");
         btn->priority = 99;
         btn->exit_menu = true;
@@ -941,6 +926,9 @@ static void print_entry(const KualEntry *entry, FILE *out, int depth) {
     fprintf(out, " => %s%s%s", entry->action,
             entry->params && *entry->params ? " " : "",
             entry->params ? entry->params : "");
+  else if (entry->builtin_action != KUAL_BUILTIN_NONE)
+    fprintf(out, " => [internal:%s]",
+            kual_builtin_action_name(entry->builtin_action));
   fputc('\n', out);
   for (size_t i = 0; i < entry->child_count; i++)
     print_entry(&entry->children[i], out, depth + 1);

@@ -928,6 +928,65 @@ static void internal_message(UI *ui, const KualEntry *entry) {
     snprintf(ui->status, sizeof(ui->status), "%s", entry->internal);
 }
 
+static void show_current_date(UI *ui) {
+  time_t now = time(NULL);
+  struct tm local;
+  localtime_r(&now, &local);
+  strftime(ui->status, sizeof(ui->status), "%Y-%m-%d %H:%M:%S", &local);
+}
+
+static int notify_document_indexer(void) {
+  pid_t pid = fork();
+  if (pid == 0) {
+    (void)kual_redirect_stderr(KUAL_DEFAULT_LOG);
+    execlp("dbus-send", "dbus-send", "--system", "/default",
+           "com.lab126.powerd.resuming", "int32:1", (char *)NULL);
+    dprintf(STDERR_FILENO, "cannot execute dbus-send: %s\n", strerror(errno));
+    _exit(127);
+  }
+  return pid < 0 ? -1 : 0;
+}
+
+/* Returns 1 when the menu should be reloaded, 0 otherwise. */
+static int run_builtin(UI *ui, KualMenu *menu, KualEntry *entry) {
+  if (entry->builtin_action == KUAL_BUILTIN_SORT_ABC ||
+      entry->builtin_action == KUAL_BUILTIN_SORT_123) {
+    const char *mode =
+        entry->builtin_action == KUAL_BUILTIN_SORT_ABC ? "ABC" : "123";
+    if (kual_set_sort_mode(menu->extensions_dir, mode) != 0) {
+      int saved = errno;
+      snprintf(ui->status, sizeof(ui->status), "Cannot set sort mode: %s",
+               strerror(saved));
+      kual_log("cannot set KUAL sort mode to %s: %s", mode, strerror(saved));
+      return 0;
+    }
+    entry->checked = entry->checked_after;
+    return 1;
+  }
+  if (entry->builtin_action == KUAL_BUILTIN_SAVE_LOG) {
+    char *destination = NULL;
+    if (kual_archive_log(KUAL_DEFAULT_LOG, KUAL_DEFAULT_DOCUMENTS, time(NULL),
+                         &destination) != 0) {
+      int saved = errno;
+      snprintf(ui->status, sizeof(ui->status), "Cannot save log: %s",
+               strerror(saved));
+      kual_log("cannot archive KUAL log: %s", strerror(saved));
+      return 0;
+    }
+    entry->checked = entry->checked_after;
+    show_current_date(ui);
+    if (notify_document_indexer() != 0) {
+      int saved = errno;
+      snprintf(ui->status, sizeof(ui->status),
+               "Log saved; index notification failed: %s", strerror(saved));
+      kual_log("cannot launch dbus-send for %s: %s", destination,
+               strerror(saved));
+    }
+    free(destination);
+  }
+  return 0;
+}
+
 static int run_background(UI *ui, KualEntry *entry) {
   char *command = action_command(entry);
   pid_t pid = fork();
@@ -955,12 +1014,8 @@ static int run_background(UI *ui, KualEntry *entry) {
   free(command);
   if (entry->checked_after)
     entry->checked = true;
-  if (entry->show_date) {
-    time_t now = time(NULL);
-    struct tm local;
-    localtime_r(&now, &local);
-    strftime(ui->status, sizeof(ui->status), "%Y-%m-%d %H:%M:%S", &local);
-  }
+  if (entry->show_date)
+    show_current_date(ui);
   return 0;
 }
 
@@ -1035,15 +1090,23 @@ static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors,
       *ui->breadcrumb_status = '\0';
     } else {
       internal_message(ui, tap.entry);
-      if (tap.entry->action) {
+      if (tap.entry->builtin_action == KUAL_BUILTIN_QUIT) {
+        ui_cleanup(ui);
+        statusbar_restore_if_owned();
+        return 2;
+      }
+      if (tap.entry->builtin_action != KUAL_BUILTIN_NONE) {
+        if (run_builtin(ui, menu, tap.entry))
+          reload_menu(ui, menu, errors);
+      } else if (tap.entry->action) {
         if (tap.entry->exit_menu)
           return exec_and_exit(ui, tap.entry) + 2;
         run_background(ui, tap.entry);
-      }
-      if (tap.entry->refresh_after) {
-        sleep_ms(250);
-        reload_menu(ui, menu, errors);
-        sleep_ms(750);
+        if (tap.entry->refresh_after) {
+          sleep_ms(250);
+          reload_menu(ui, menu, errors);
+          sleep_ms(750);
+        }
       }
     }
   }

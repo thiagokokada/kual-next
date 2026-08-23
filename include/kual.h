@@ -4,12 +4,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <time.h>
 
 #ifndef KUAL_NEXT_VERSION
 #error "KUAL_NEXT_VERSION must be supplied by the build system"
 #endif
 #define KUAL_DEFAULT_EXTENSIONS "/mnt/us/extensions"
 #define KUAL_DEFAULT_LOG "/var/tmp/kual-next.log"
+#define KUAL_DEFAULT_DOCUMENTS "/mnt/us/documents"
 #define KUAL_MAX_DEPTH 10
 
 typedef struct {
@@ -29,6 +31,14 @@ typedef enum {
   KUAL_INTERNAL_STATUS,
 } KualInternalKind;
 
+typedef enum {
+  KUAL_BUILTIN_NONE,
+  KUAL_BUILTIN_SORT_ABC,
+  KUAL_BUILTIN_SORT_123,
+  KUAL_BUILTIN_SAVE_LOG,
+  KUAL_BUILTIN_QUIT,
+} KualBuiltinAction;
+
 typedef struct KualEntry {
   char *name;
   char *action;
@@ -36,6 +46,7 @@ typedef struct KualEntry {
   char *condition;
   char *internal;
   KualInternalKind internal_kind;
+  KualBuiltinAction builtin_action;
   char *working_dir;
   char *extension_id;
   char *source;
@@ -87,6 +98,10 @@ void kual_log(const char *format, ...);
 int kual_redirect_stderr(const char *path);
 const char *kual_privilege_indicator(bool is_root);
 bool kual_power_event_is_unlock(const char *event, bool screen_saver_active);
+int kual_set_sort_mode(const char *extensions_dir, const char *mode);
+int kual_archive_log(const char *source, const char *documents_dir, time_t when,
+                     char **destination_out);
+const char *kual_builtin_action_name(KualBuiltinAction action);
 
 void kual_config_init(KualConfig *config);
 void kual_config_free(KualConfig *config);

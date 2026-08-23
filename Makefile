@@ -11,7 +11,7 @@ SCP ?= scp
 SSH_ARGS ?=
 SCP_ARGS ?=
 CPPFLAGS := -Iinclude -Ithird_party -DKUAL_NEXT_VERSION='"$(VERSION)"'
-CORE_SOURCES := src/util.c src/config.c src/condition.c src/menu.c
+CORE_SOURCES := src/util.c src/config.c src/condition.c src/builtin.c src/menu.c
 HOST_SOURCES := $(CORE_SOURCES) third_party/yxml.c src/main.c
 HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
 TEST_SOURCES := $(CORE_SOURCES) third_party/yxml.c tests/unit.c
