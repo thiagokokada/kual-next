@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
 const fbink_sources = &.{
     "third_party/FBInk/fbink.c",
@@ -13,10 +12,6 @@ const fbink_sources = &.{
 };
 
 pub fn build(b: *std.Build) void {
-    if (builtin.zig_version.major != 0 or builtin.zig_version.minor != 16) {
-        @panic("KUAL Next requires Zig 0.16.x");
-    }
-
     const manifest_text = b.build_root.handle.readFileAlloc(
         b.graph.io,
         "build.zig.zon",

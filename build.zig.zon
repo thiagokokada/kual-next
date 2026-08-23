@@ -2,7 +2,6 @@
     .name = .kual_next,
     .version = "0.2.0",
     .fingerprint = 0x11508b69f96d1985, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/d73304c3d56d6331a0caca4d339607e7c740aab5.tar.gz",

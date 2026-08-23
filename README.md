@@ -97,7 +97,7 @@ zig build test
 
 Use `zig build` (or `zig build host`) for the host validator. `zig build check`
 runs all Zig and shell tests plus the Kindle cross-build and ELF ABI/static-link
-verification. The build rejects Zig versions outside the 0.16.x series.
+verification. The Nix development shell supplies the project toolchain.
 
 Validate an extension tree without opening a framebuffer:
 

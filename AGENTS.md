@@ -66,7 +66,8 @@ sources under `third_party/`.
 
 ## Implementation constraints
 
-- Use Zig 0.16.x and keep the host and Kindle builds warning-clean.
+- Use the Zig toolchain pinned by `flake.nix` and keep the host and Kindle
+  builds warning-clean.
 - Continue using FBInk for drawing and Linux evdev for input.
 - Keep the device binary statically linked unless a separate design decision
   explicitly changes that constraint.
