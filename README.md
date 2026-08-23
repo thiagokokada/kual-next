@@ -84,6 +84,7 @@ scope.
 
 - https://github.com/Satsuoni/DeDRM_tools/
 - https://github.com/bfabiszewski/kterm
+- https://github.com/justrals/KindleFetch
 - https://github.com/koreader/koreader
 - https://github.com/mitanshu7/tailscale_kual
 
