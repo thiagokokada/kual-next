@@ -62,6 +62,17 @@ check, and the static-link check. The resulting archive is written under
 `dist/`. Build products, toolchains, caches, and packages are generated files
 and must not be committed.
 
+`make test` also builds and runs the host unit suite with AddressSanitizer,
+UndefinedBehaviorSanitizer, and leak detection enabled. To run only the
+sanitizer suite:
+
+```sh
+nix develop
+make sanitize
+```
+
+Treat any sanitizer report as a failed verification.
+
 The root `VERSION` file is the single version source for both the compiled UI
 and package filename. Change it for releases; do not add another version macro.
 
