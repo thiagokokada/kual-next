@@ -149,15 +149,6 @@ pub const Menu = struct {
         var seen: std.ArrayList(std.Io.File.INode) = .empty;
         try discoverDir(self, self.extensions_dir, 0, search_depth, follow, self.config.get("search_exclude_paths"), &files, &seen, errors);
 
-        // Register every discovered ID first: KUAL's -ext conditions may refer
-        // to an extension whose menu is parsed later in directory order.
-        for (files.items) |file| {
-            if (file.menus.items.len == 0) continue;
-            const cwd = dirname(file.path);
-            const base = std.fs.path.basename(cwd);
-            try self.addAlias(base);
-            try self.addAlias(file.id);
-        }
         for (files.items) |file| try self.parseExtension(file, errors);
         try pruneEntries(self, &self.root, errors);
         if (self.config.get("collate") == null or !asciiEqlIgnoreCase(self.config.get("collate").?, "false"))
@@ -183,7 +174,13 @@ pub const Menu = struct {
         }
         if (file.menus.items.len == 0)
             try errors.add(file.path, "no readable JSON menu declaration", .{});
-        if (loaded) self.extension_id_count += 1;
+        if (loaded) {
+            // Conditions are pruned only after every extension is parsed, so
+            // aliases registered here remain independent of directory order.
+            try self.addAlias(std.fs.path.basename(cwd));
+            try self.addAlias(file.id);
+            self.extension_id_count += 1;
+        }
     }
 
     fn parseJsonMenu(self: *Menu, path: []const u8, cwd: []const u8, id: []const u8, errors: *Errors) !bool {
