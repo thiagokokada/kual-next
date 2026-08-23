@@ -369,6 +369,16 @@ static void ui_layout(UI *ui) {
   ui->list_h = KUAL_PAGE_ROWS * ui->button_h + (KUAL_PAGE_ROWS - 1U) * ui->gap;
 }
 
+static int ui_reinit(UI *ui) {
+  int result = fbink_reinit(ui->fbfd, &ui->draw_cfg);
+  if (result < 0)
+    return result;
+
+  fbink_get_state(&ui->draw_cfg, &ui->state);
+  ui_layout(ui);
+  return 0;
+}
+
 static int ui_init(UI *ui) {
   memset(ui, 0, sizeof(*ui));
   ui->fbfd = ui->power_fd = -1;
@@ -724,11 +734,10 @@ static void ui_draw(UI *ui) {
 
 static void ui_redraw_after_resume(UI *ui) {
   statusbar_hide_if_owned();
-  int result = fbink_reinit(ui->fbfd, &ui->draw_cfg);
-  if (result < 0)
+  int result = ui_reinit(ui);
+  if (result < 0) {
     kual_log("FBInk reinit after unlock failed: %d", result);
-  fbink_get_state(&ui->draw_cfg, &ui->state);
-  ui_layout(ui);
+  }
   ui_draw(ui);
 }
 
@@ -1121,7 +1130,14 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
   sigaction(SIGINT, &action, NULL);
   sigaction(SIGQUIT, &action, NULL);
   ui.nav[0] = &menu->root;
+
+  sleep_ms(500);
+  int result = ui_reinit(&ui);
+  if (result < 0) {
+    kual_log("FBInk reinit before initial draw failed: %d", result);
+  }
   ui_draw(&ui);
+
   while (!stopping) {
     struct pollfd fds[MAX_INPUTS + 1U];
     bool monitor_power = ui.power_fd >= 0;
