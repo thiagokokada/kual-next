@@ -617,21 +617,6 @@ pub fn conditionEval(menu: *Menu, expr: ?[]const u8, working_dir: []const u8, er
     return truth(stack.items[0]);
 }
 
-pub fn formatDisplayDate(allocator: Allocator, when: u64) ![]const u8 {
-    const epoch = std.time.epoch.EpochSeconds{ .secs = when };
-    const year_day = epoch.getEpochDay().calculateYearDay();
-    const month_day = year_day.calculateMonthDay();
-    const day_seconds = epoch.getDaySeconds();
-    return std.fmt.allocPrint(allocator, "{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}", .{
-        year_day.year,
-        @intFromEnum(month_day.month),
-        month_day.day_index + 1,
-        day_seconds.getHoursIntoDay(),
-        day_seconds.getMinutesIntoHour(),
-        day_seconds.getSecondsIntoMinute(),
-    });
-}
-
 fn nextToken(allocator: Allocator, input: []const u8, cursor: *usize, error_out: *?[]const u8) !?[]const u8 {
     while (cursor.* < input.len and std.ascii.isWhitespace(input[cursor.*])) cursor.* += 1;
     if (cursor.* == input.len) return null;

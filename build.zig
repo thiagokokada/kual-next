@@ -77,6 +77,22 @@ pub fn build(b: *std.Build) void {
     });
     const ui_logic_tests = b.addTest(.{ .name = "kual-next-ui-logic-tests", .root_module = ui_logic_module });
     const run_ui_logic_tests = b.addRunArtifact(ui_logic_tests);
+    const local_time_module = b.createModule(.{
+        .root_source_file = b.path("src/local_time.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+        .link_libc = true,
+    });
+    const local_time_tests = b.addTest(.{ .name = "kual-next-local-time-tests", .root_module = local_time_module });
+    const run_local_time_tests = b.addRunArtifact(local_time_tests);
+    const safe_local_time_module = b.createModule(.{
+        .root_source_file = b.path("src/local_time.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        .link_libc = true,
+    });
+    const safe_local_time_tests = b.addTest(.{ .name = "kual-next-local-time-tests-safe", .root_module = safe_local_time_module });
+    const run_safe_local_time_tests = b.addRunArtifact(safe_local_time_tests);
     const parser_tests = b.addSystemCommand(&.{ "sh", "./tests/run.sh" });
     parser_tests.addArtifactArg(host);
     parser_tests.setEnvironmentVariable("KUAL_TEST_VERSION", version);
@@ -84,6 +100,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_unit.step);
     test_step.dependOn(&run_safe_unit.step);
     test_step.dependOn(&run_ui_logic_tests.step);
+    test_step.dependOn(&run_local_time_tests.step);
+    test_step.dependOn(&run_safe_local_time_tests.step);
     test_step.dependOn(&parser_tests.step);
 
     const kindle_target = b.resolveTargetQuery(.{

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 const core = @import("core");
+const local_time = @import("local_time.zig");
 const ui_logic = @import("ui_logic");
 const options = @import("build_options");
 
@@ -807,7 +808,7 @@ fn setStatus(ui: *UI, text: []const u8) void {
 
 fn showCurrentDate(ui: *UI) void {
     const now: u64 = @intCast(@max(0, @divFloor(Io.Clock.real.now(ui.io).nanoseconds, std.time.ns_per_s)));
-    const date = core.formatDisplayDate(ui.allocator, now) catch |err| {
+    const date = local_time.formatDisplayDate(ui.allocator, now) catch |err| {
         core.log(ui.io, ui.allocator, "cannot format current date: {s}", .{@errorName(err)});
         return;
     };
