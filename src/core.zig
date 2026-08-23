@@ -868,22 +868,49 @@ pub fn privilegeIndicator(is_root: bool) []const u8 {
     return if (is_root) "#" else "%";
 }
 
+fn openAppendFile(path: []const u8) !Io.File {
+    const fd = try std.posix.openat(std.posix.AT.FDCWD, path, .{
+        .ACCMODE = .WRONLY,
+        .CREAT = true,
+        .APPEND = true,
+        .CLOEXEC = true,
+    }, 0o644);
+    return .{ .handle = fd, .flags = .{ .nonblocking = false } };
+}
+
 pub fn log(io: Io, allocator: Allocator, comptime fmt: []const u8, args: anytype) void {
     const message = std.fmt.allocPrint(allocator, fmt ++ "\n", args) catch return;
     defer allocator.free(message);
-    const cwd = Io.Dir.cwd();
-    var file = cwd.openFile(io, default_log, .{ .mode = .write_only }) catch
-        cwd.createFile(io, default_log, .{ .truncate = false, .permissions = .fromMode(0o644) }) catch {
+    var file = openAppendFile(default_log) catch {
         Io.File.stderr().writeStreamingAll(io, message) catch {};
         return;
     };
     defer file.close(io);
-    const offset = file.length(io) catch {
+    file.writeStreamingAll(io, message) catch
         Io.File.stderr().writeStreamingAll(io, message) catch {};
-        return;
-    };
-    file.writePositionalAll(io, message, offset) catch
-        Io.File.stderr().writeStreamingAll(io, message) catch {};
+}
+
+test "append files do not overwrite writes from another descriptor" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try std.fmt.allocPrint(allocator, ".zig-cache/tmp/{s}", .{tmp.sub_path});
+    defer allocator.free(root);
+    const path = try std.fs.path.join(allocator, &.{ root, "append.log" });
+    defer allocator.free(path);
+
+    var first = try openAppendFile(path);
+    defer first.close(io);
+    var second = try openAppendFile(path);
+    defer second.close(io);
+    try first.writeStreamingAll(io, "first\n");
+    try second.writeStreamingAll(io, "second\n");
+    try first.writeStreamingAll(io, "third\n");
+
+    const contents = try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024));
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("first\nsecond\nthird\n", contents);
 }
 
 pub fn setSortMode(allocator: Allocator, io: Io, extensions_dir: []const u8, mode: []const u8) !void {
