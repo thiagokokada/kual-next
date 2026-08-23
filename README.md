@@ -48,9 +48,10 @@ device is ready.
 
 ### Updating
 
-Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and repeat
-the copy steps above. Allow your computer to replace the existing KUAL Next
-files. Your installed extensions are stored separately and will not be removed.
+Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and
+repeat the copy steps above. Allow your computer to replace the existing KUAL
+Next files. Your installed extensions are stored separately and will not be
+removed.
 
 ## Supported extension contract
 
@@ -96,8 +97,9 @@ zig build test
 ```
 
 Use `zig build` (or `zig build host`) for the host validator. `zig build check`
-runs all Zig and shell tests plus the Kindle cross-build and ELF ABI/static-link
-verification. The Nix development shell supplies the project toolchain.
+runs all Zig and shell tests plus the Kindle cross-build and ELF
+ABI/static-link verification. The Nix development shell supplies the project
+toolchain.
 
 Validate an extension tree without opening a framebuffer:
 
@@ -112,10 +114,10 @@ nix develop
 zig build deploy -Dkindle-host=root@your-kindle
 ```
 
-`-Dkindle-host` is required and is never given a repository default. The target
-honors the `SSH` and `SCP` environment variables, verifies the uploaded archive,
-and refuses to overwrite KUAL Next while it is running. Quit the launcher before
-deploying, then open it again through the Kindle scriptlet UI.
+The target honors the `SSH` and `SCP` environment variables, verifies the
+uploaded archive, and refuses to overwrite KUAL Next while it is running. Quit
+the launcher before deploying, then open it again through the Kindle scriptlet
+UI.
 
 ### Interactive device UI test
 
@@ -143,9 +145,7 @@ deleted automatically so it can be inspected after the test.
 
 ## Kindle cross-build
 
-The pinned Zig 0.16.x compiler cross-builds the launcher, zig-xml, and the
-FBInk C dependency directly for ARMv7 hard-float Linux with static musl. No
-separate Kindle GCC toolchain is required.
+Run:
 
 ```sh
 nix develop
@@ -156,19 +156,17 @@ zig build package
 
 The host and Kindle binaries are written to `zig-out/host/kual-next` and
 `zig-out/kindle/kual-next`. The package is written to
-`dist/kual-next-<version>-kindlehf.zip`. Extract it
-at the Kindle USB storage root for testing. The scriptlet metadata uses the
-bundled `kual-next/icon.png` as its Kindle library cover.
+`dist/kual-next-<version>-kindlehf.zip`. Extract it at the Kindle USB storage
+root for testing.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
 
 ## Releases
 
-The `.version` field in `build.zig.zon` is the single release version source.
-After the version change has
-landed on `main` and CI has passed, run the `Release` workflow. It derives the
-stable SemVer tag from `build.zig.zon` and creates it at the exact `main`
-commit that it successfully built. If the tag already exists, the workflow
-aborts; existing tags are never moved. It publishes the package and its
-SHA-256 checksum with generated release notes, and does not publish
-prereleases.
+After the version change has landed on `main` and CI has passed, run the
+`Release` workflow. It derives the stable SemVer tag from `build.zig.zon` and
+creates it at the exact `main` commit that it successfully built. If the tag
+already exists, the workflow aborts.
+
+It publishes the package and its SHA-256 checksum with generated release notes,
+and does not publish prereleases.
