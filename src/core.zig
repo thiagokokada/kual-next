@@ -146,7 +146,7 @@ pub const Menu = struct {
         }
         const follow = if (self.config.get("nofollow")) |v| !asciiEqlIgnoreCase(v, "true") else true;
         var files: std.ArrayList(ExtensionFile) = .empty;
-        var seen: std.ArrayList(std.Io.File.INode) = .empty;
+        var seen: std.ArrayList(DirectoryKey) = .empty;
         try discoverDir(self, self.extensions_dir, 0, search_depth, follow, self.config.get("search_exclude_paths"), &files, &seen, errors);
 
         for (files.items) |file| try self.parseExtension(file, errors);
@@ -358,7 +358,31 @@ const ExtensionFile = struct {
     is_extension: bool = false,
 };
 
-fn discoverDir(menu: *Menu, path: []const u8, depth: usize, limit: usize, follow: bool, exclude: ?[]const u8, files: *std.ArrayList(ExtensionFile), seen: *std.ArrayList(std.Io.File.INode), errors: *Errors) !void {
+const DirectoryKey = struct {
+    device_major: u32,
+    device_minor: u32,
+    inode: u64,
+};
+
+fn directoryKey(dir: Io.Dir) !DirectoryKey {
+    const linux = std.os.linux;
+    var statx = std.mem.zeroes(linux.Statx);
+    while (true) {
+        switch (linux.errno(linux.statx(dir.handle, "", linux.AT.EMPTY_PATH, .BASIC_STATS, &statx))) {
+            .SUCCESS => break,
+            .INTR => continue,
+            else => return error.DirectoryIdentityUnavailable,
+        }
+    }
+    if (!statx.mask.INO) return error.DirectoryIdentityUnavailable;
+    return .{
+        .device_major = statx.dev_major,
+        .device_minor = statx.dev_minor,
+        .inode = statx.ino,
+    };
+}
+
+fn discoverDir(menu: *Menu, path: []const u8, depth: usize, limit: usize, follow: bool, exclude: ?[]const u8, files: *std.ArrayList(ExtensionFile), seen: *std.ArrayList(DirectoryKey), errors: *Errors) !void {
     const allocator = menu.arenaAllocator();
     const stat = Io.Dir.cwd().statFile(menu.io, path, .{ .follow_symlinks = follow }) catch |err| {
         if (depth == 0 or err != error.FileNotFound)
@@ -366,13 +390,17 @@ fn discoverDir(menu: *Menu, path: []const u8, depth: usize, limit: usize, follow
         return;
     };
     if (stat.kind != .directory) return;
-    for (seen.items) |inode| if (inode == stat.inode) return;
-    try seen.append(allocator, stat.inode);
     const dir = Io.Dir.cwd().openDir(menu.io, path, .{ .iterate = true }) catch |err| {
         try errors.add(path, "cannot open directory: {s}", .{@errorName(err)});
         return;
     };
     defer dir.close(menu.io);
+    const key = directoryKey(dir) catch |err| {
+        try errors.add(path, "cannot identify directory: {s}", .{@errorName(err)});
+        return;
+    };
+    for (seen.items) |visited| if (std.meta.eql(visited, key)) return;
+    try seen.append(allocator, key);
     var iterator = dir.iterateAssumeFirstIteration();
     while (try iterator.next(menu.io)) |entry| {
         const child = try join(allocator, path, entry.name);
@@ -799,6 +827,14 @@ test "power event unlock semantics" {
     try std.testing.expect(powerEventIsUnlock("exitingScreenSaver", true));
     try std.testing.expect(!powerEventIsUnlock("outOfScreenSaver", true));
     try std.testing.expect(!powerEventIsUnlock("exitingScreenSaver", false));
+}
+
+test "directory identity includes the containing device" {
+    const first: DirectoryKey = .{ .device_major = 1, .device_minor = 2, .inode = 42 };
+    const same: DirectoryKey = .{ .device_major = 1, .device_minor = 2, .inode = 42 };
+    const other_device: DirectoryKey = .{ .device_major = 1, .device_minor = 3, .inode = 42 };
+    try std.testing.expect(std.meta.eql(first, same));
+    try std.testing.expect(!std.meta.eql(first, other_device));
 }
 
 test "conditions preserve KUAL grep error semantics" {
