@@ -2,17 +2,12 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Stable release tag, such as v0.2.0; created if missing
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -21,8 +16,8 @@ jobs:
     timeout-minutes: 20
     outputs:
       version: ${{ steps.validate.outputs.version }}
+      release_tag: ${{ steps.validate.outputs.release_tag }}
       release_commit: ${{ steps.validate.outputs.release_commit }}
-      tag_exists: ${{ steps.validate.outputs.tag_exists }}
     steps:
       - name: Check out release definitions
         uses: actions/checkout@v6
@@ -30,12 +25,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: main
-      - name: Validate release tag
+      - name: Validate release version
         id: validate
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
         run: |
+          version=$(git show origin/main:VERSION)
+          RELEASE_TAG="v$version"
           version=$(sh scripts/validate-release-tag.sh "$RELEASE_TAG" origin/main)
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             >/dev/null 2>&1; then
@@ -44,16 +40,14 @@ jobs:
           fi
           if git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" \
             >/dev/null 2>&1; then
-            tag_exists=true
-            release_commit=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
-          else
-            tag_exists=false
-            release_commit=$(git rev-parse "origin/main^{commit}")
+            echo "Git tag $RELEASE_TAG already exists." >&2
+            exit 1
           fi
+          release_commit=$(git rev-parse "origin/main^{commit}")
           {
             printf 'version=%s\n' "$version"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'release_commit=%s\n' "$release_commit"
-            printf 'tag_exists=%s\n' "$tag_exists"
           } >>"$GITHUB_OUTPUT"
       - name: Check out release source
         uses: actions/checkout@v6
@@ -80,7 +74,7 @@ jobs:
       - name: Preserve release assets
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ inputs.tag }}
+          name: release-${{ steps.validate.outputs.release_tag }}
           path: |
             dist/kual-next-${{ steps.validate.outputs.version }}-kindlehf.zip
             dist/kual-next-${{ steps.validate.outputs.version }}-kindlehf.zip.sha256
@@ -97,14 +91,13 @@ jobs:
       - name: Download release assets
         uses: actions/download-artifact@v8
         with:
-          name: release-${{ inputs.tag }}
+          name: release-${{ needs.build.outputs.release_tag }}
           path: release-assets
-      - name: Create missing release tag
-        if: needs.build.outputs.tag_exists == 'false'
+      - name: Create release tag
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ needs.build.outputs.release_commit }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f ref="refs/tags/$RELEASE_TAG" \
@@ -112,7 +105,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           package="release-assets/kual-next-$VERSION-kindlehf.zip"
