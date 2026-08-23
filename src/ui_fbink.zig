@@ -15,6 +15,7 @@ const c = @cImport({
     @cInclude("signal.h");
     @cInclude("stdlib.h");
     @cInclude("sys/ioctl.h");
+    @cInclude("sys/prctl.h");
     @cInclude("sys/wait.h");
     @cInclude("unistd.h");
 });
@@ -22,6 +23,15 @@ const c = @cImport({
 const page_rows = ui_logic.page_rows;
 const max_inputs = 16;
 const max_nav_depth = core.max_depth + 1;
+pub const power_event_monitor_argument = "--internal-power-event-monitor";
+const power_event_command = &.{
+    "/usr/bin/lipc-wait-event",
+    "-m",
+    "-s",
+    "0",
+    "com.lab126.powerd",
+    "goingToScreenSaver,outOfScreenSaver,exitingScreenSaver",
+};
 
 fn errnoValue() c_int {
     return c.__errno_location().*;
@@ -276,15 +286,10 @@ const UI = struct {
     }
 
     fn openPowerEvents(self: *UI) !void {
+        const executable = try std.process.executablePathAlloc(self.io, self.allocator);
+        defer self.allocator.free(executable);
         const child = try std.process.spawn(self.io, .{
-            .argv = &.{
-                "/usr/bin/lipc-wait-event",
-                "-m",
-                "-s",
-                "0",
-                "com.lab126.powerd",
-                "goingToScreenSaver,outOfScreenSaver,exitingScreenSaver",
-            },
+            .argv = &.{ executable, power_event_monitor_argument },
             .stdin = .ignore,
             .stdout = .pipe,
             .stderr = .ignore,
@@ -988,6 +993,20 @@ fn handleTap(ui: *UI, menu: *core.Menu, errors: *core.Errors, tap: TapResult, st
     }
     ui.draw();
     return null;
+}
+
+pub fn runPowerEventMonitor(allocator: std.mem.Allocator, io: Io) u8 {
+    if (c.prctl(c.PR_SET_PDEATHSIG, @as(c_ulong, c.SIGTERM)) != 0) {
+        core.log(io, allocator, "cannot bind screen-saver monitor to launcher lifetime: errno {d}", .{errnoValue()});
+        return 1;
+    }
+    if (c.getppid() == 1) {
+        core.log(io, allocator, "screen-saver monitor started after its launcher exited", .{});
+        return 1;
+    }
+    const err = std.process.replace(io, .{ .argv = power_event_command });
+    core.log(io, allocator, "cannot start Kindle screen-saver event monitor: {s}", .{@errorName(err)});
+    return 1;
 }
 
 pub fn run(allocator: std.mem.Allocator, io: Io, menu: *core.Menu, errors: *core.Errors, statusbar_owned: bool) !u8 {

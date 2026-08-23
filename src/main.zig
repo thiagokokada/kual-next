@@ -14,6 +14,8 @@ fn usage(writer: *Io.Writer) !void {
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
+    if (!options.host and args.len == 2 and std.mem.eql(u8, args[1], ui.power_event_monitor_argument))
+        std.process.exit(ui.runPowerEventMonitor(allocator, init.io));
     var extensions: []const u8 = core.default_extensions;
     var model_arg: ?[]const u8 = null;
     var validate = false;
