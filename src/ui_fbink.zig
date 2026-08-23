@@ -764,9 +764,9 @@ const UI = struct {
     }
 };
 
-var stopping: c.sig_atomic_t = 0;
+var stopping = std.atomic.Value(c.sig_atomic_t).init(0);
 fn stopHandler(_: c_int) callconv(.c) void {
-    stopping = 1;
+    stopping.store(1, .monotonic);
 }
 
 fn serviceCommand(io: Io, allocator: std.mem.Allocator, path: []const u8) void {
@@ -1004,7 +1004,7 @@ pub fn run(allocator: std.mem.Allocator, io: Io, menu: *core.Menu, errors: *core
     Io.sleep(io, .fromMilliseconds(500), .awake) catch {};
     ui.reinit() catch |err| core.log(io, allocator, "FBInk reinit before first draw failed: {s}", .{@errorName(err)});
     ui.draw();
-    while (stopping == 0) {
+    while (stopping.load(.monotonic) == 0) {
         var fds: [max_inputs + 1]c.struct_pollfd = undefined;
         const monitor_power = ui.power_file != null;
         const input_offset: usize = if (monitor_power) 1 else 0;
