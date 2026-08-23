@@ -6,7 +6,7 @@
 
 set -u
 
-log=${KUAL_NEXT_LOG:-/var/tmp/kual-next.log}
+log=/var/tmp/kual-next.log
 launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}
 extensions=${KUAL_NEXT_EXTENSIONS:-}
 statusbar_owned=0
