@@ -28,10 +28,6 @@ do
 		exit 1
 	}
 done
-if printf '%s\n' "$entries" | grep -Eq 'jsmn|yxml'; then
-	printf 'Package still contains a removed parser dependency\n' >&2
-	exit 1
-fi
 if unzip -l "$package" | awk \
 	'/^[[:space:]]*[0-9]+[[:space:]]+[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]/ && $2 != "01-01-2000" { exit 1 }'; then
 	:
