@@ -791,9 +791,9 @@ fn openLog(io: Io) !Io.File {
     const file = cwd.openFile(io, core.default_log, .{ .mode = .write_only }) catch
         try cwd.createFile(io, core.default_log, .{ .truncate = false, .permissions = .fromMode(0o644) });
     errdefer file.close(io);
-    const length = try file.length(io);
-    var reader = file.readerStreaming(io, &.{});
-    try reader.seekTo(length);
+    const flags = c.fcntl(file.handle, c.F_GETFL);
+    if (flags < 0) return error.LogFlagsFailed;
+    if (c.fcntl(file.handle, c.F_SETFL, flags | c.O_APPEND) < 0) return error.LogAppendFailed;
     return file;
 }
 
