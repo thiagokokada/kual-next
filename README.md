@@ -48,10 +48,9 @@ device is ready.
 
 ### Updating
 
-Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and
-repeat the copy steps above. Allow your computer to replace the existing KUAL
-Next files. Your installed extensions are stored separately and will not be
-removed.
+Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and repeat
+the copy steps above. Allow your computer to replace the existing KUAL Next
+files. Your installed extensions are stored separately and will not be removed.
 
 ## Supported extension contract
 
@@ -75,7 +74,7 @@ scope.
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
 | Input | Touch, Home/Menu, back, next, and a small set of page-key aliases are supported. KUAL's numeric/QWERTY item shortcuts and Java focus navigation are not. |
 | Configuration | Discovery depth, path exclusion, symlink following, collation, and `ABC`, `ABC!`, and `123` sorting are supported. UI settings such as `KUAL_no_show_status` and the self-management menu are not. |
-| Parsing | `config.xml` is handled by zig-xml. XML syntax, nesting, predefined and numeric entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |
+| Parsing | `config.xml` is handled by the small, non-validating yxml parser. XML syntax, nesting, entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |
 | Fonts | Bundled Noto fonts cover KUAL's standard indicators and many scripts and symbols, but there is no font fallback; unsupported characters may be rendered as squares. |
 | Devices | Only recent ARM hard-float Kindles running firmware 5.16.3 or newer are targeted. Older ARMEL and keyboard-era devices are unsupported. |
 | Menu size | Menus are limited to ten nesting levels and ten visible rows per page. |
@@ -94,31 +93,26 @@ Enter the pinned Nix environment and run the host tests:
 
 ```sh
 nix develop
-zig build test
+make test
 ```
-
-Use `zig build` (or `zig build host`) for the host validator. `zig build check`
-runs all Zig and shell tests plus the Kindle cross-build and ELF
-ABI/static-link verification. The Nix development shell supplies the project
-toolchain.
 
 Validate an extension tree without opening a framebuffer:
 
 ```sh
-zig-out/host/kual-next --validate --extensions /path/to/extensions --model KindlePaperWhite5
+build/host/kual-next --validate --extensions /path/to/extensions --model KindlePaperWhite5
 ```
 
 Build and deploy the package over SSH:
 
 ```sh
 nix develop
-zig build deploy -Dkindle-host=root@your-kindle
+make deploy KINDLE_HOST=root@your-kindle
 ```
 
-The target honors the `SSH` and `SCP` environment variables, verifies the
-uploaded archive, and refuses to overwrite KUAL Next while it is running. Quit
-the launcher before deploying, then open it again through the Kindle scriptlet
-UI.
+`KINDLE_HOST` is required and is never given a repository default. The target
+honors the `SSH` and `SCP` environment variables, verifies the uploaded archive,
+and refuses to overwrite KUAL Next while it is running. Quit the launcher before
+deploying, then open it again through the Kindle scriptlet UI.
 
 ### Interactive device UI test
 
@@ -127,7 +121,7 @@ installed launcher or `/mnt/us/extensions`, quit KUAL Next and run:
 
 ```sh
 nix develop
-zig build device-ui-test -Dkindle-host=root@your-kindle
+make device-ui-test KINDLE_HOST=root@your-kindle
 ```
 
 Optional SSH client flags can be supplied separately, for example
@@ -146,28 +140,28 @@ deleted automatically so it can be inspected after the test.
 
 ## Kindle cross-build
 
-Run:
+The toolchain setup downloads a prebuilt
+[koxtoolchain](https://github.com/koreader/koxtoolchain), `kindlehf` target
+into `.toolchains/`.
 
 ```sh
 nix develop
-zig build kindle
-zig build check
-zig build package
+make toolchain
+make check
+make package
 ```
 
-The host and Kindle binaries are written to `zig-out/host/kual-next` and
-`zig-out/kindle/kual-next`. The package is written to
-`dist/kual-next-<version>-kindlehf.zip`. Extract it at the Kindle USB storage
-root for testing.
+The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
+at the Kindle USB storage root for testing. The scriptlet metadata uses the
+bundled `kual-next/icon.png` as its Kindle library cover.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
 
 ## Releases
 
-After the version change has landed on `main` and CI has passed, run the
-`Release` workflow. It derives the stable SemVer tag from `build.zig.zon` and
-creates it at the exact `main` commit that it successfully built. If the tag
-already exists, the workflow aborts.
-
-It publishes the package and its SHA-256 checksum with generated release notes,
-and does not publish prereleases.
+`VERSION` is the single release version source. After the version change has
+landed on `main` and CI has passed, run the `Release` workflow. It derives the
+stable SemVer tag from `VERSION` and creates it at the exact `main` commit that
+it successfully built. If the tag already exists, the workflow aborts; existing
+tags are never moved. It publishes the package and its SHA-256 checksum with
+generated release notes, and does not publish prereleases.

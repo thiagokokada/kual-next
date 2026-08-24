@@ -3,13 +3,12 @@
 set -eu
 
 host=${1:-}
-binary_arg=${2:-}
 ssh_bin=${SSH:-ssh}
 scp_bin=${SCP:-scp}
 ssh_args=${SSH_ARGS:-}
 scp_args=${SCP_ARGS:-}
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-binary=${binary_arg:-${KUAL_TEST_BINARY:-$root/zig-out/kindle/kual-next}}
+binary=${KUAL_TEST_BINARY:-$root/build/kindle/kual-next}
 supervisor=$root/assets/KUAL\ Next.sh
 fixture=$root/tests/device-fixtures/extensions
 remote_root=/tmp/kual-next-ui-test
@@ -26,7 +25,7 @@ run_scp() {
 }
 
 if [ -z "$host" ]; then
-	printf 'Usage: %s USER@HOST [KINDLE_BINARY]\n' "$0" >&2
+	printf 'Usage: %s USER@HOST\n' "$0" >&2
 	exit 2
 fi
 case "$host" in
@@ -36,7 +35,7 @@ case "$host" in
 		;;
 esac
 if [ ! -x "$binary" ]; then
-	printf 'Kindle binary not found: %s (run zig build kindle first)\n' "$binary" >&2
+	printf 'Kindle binary not found: %s (run make kindle first)\n' "$binary" >&2
 	exit 2
 fi
 

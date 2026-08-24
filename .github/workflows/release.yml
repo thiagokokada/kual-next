@@ -30,8 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(git show origin/main:build.zig.zon | sed -n \
-            's/^[[:space:]]*\.version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+          version=$(git show origin/main:VERSION)
           RELEASE_TAG="v$version"
           version=$(sh scripts/validate-release-tag.sh "$RELEASE_TAG" origin/main)
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
@@ -61,8 +60,10 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: experimental-features = nix-command flakes
+      - name: Install Kindle toolchain
+        run: nix develop --command make toolchain
       - name: Build and verify package
-        run: nix develop --command zig build package
+        run: nix develop --command make package
       - name: Create package checksum
         env:
           VERSION: ${{ steps.validate.outputs.version }}

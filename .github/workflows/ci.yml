@@ -28,7 +28,7 @@ jobs:
         with:
           extra_nix_config: experimental-features = nix-command flakes
       - name: Run host tests
-        run: nix develop --command zig build test
+        run: nix develop --command make test
 
   package:
     runs-on: ubuntu-24.04
@@ -43,8 +43,10 @@ jobs:
         uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: experimental-features = nix-command flakes
+      - name: Install Kindle toolchain
+        run: nix develop --command make toolchain
       - name: Build and verify package
-        run: nix develop --command zig build package
+        run: nix develop --command make package
       - name: Upload Kindle package
         uses: actions/upload-artifact@v7
         with:
