@@ -75,6 +75,35 @@ static int write_all(int fd, const void *data, size_t len) {
   return 0;
 }
 
+typedef struct {
+  char *destination;
+  char *temporary;
+  int source_fd;
+  int destination_fd;
+  bool temporary_exists;
+} ArchiveResources;
+
+static int close_owned_fd(int *fd) {
+  if (*fd < 0)
+    return 0;
+  int owned = *fd;
+  *fd = -1;
+  return close(owned);
+}
+
+static void archive_resources_cleanup(ArchiveResources *resources) {
+  int saved = errno;
+  (void)close_owned_fd(&resources->destination_fd);
+  (void)close_owned_fd(&resources->source_fd);
+  if (resources->temporary_exists)
+    (void)unlink(resources->temporary);
+  free(resources->temporary);
+  free(resources->destination);
+  memset(resources, 0, sizeof(*resources));
+  resources->source_fd = resources->destination_fd = -1;
+  errno = saved;
+}
+
 static int replace_file(const char *path, const void *data, size_t len,
                         mode_t mode) {
   size_t template_len = strlen(path) + sizeof(".tmp.XXXXXX");
@@ -195,75 +224,56 @@ int kual_archive_log(const char *source, const char *documents_dir, time_t when,
     errno = EINVAL;
     return -1;
   }
-  char *destination = kual_join_path(documents_dir, filename);
-  char *template = kual_join_path(documents_dir, ".kual-next-log.XXXXXX");
-  int source_fd = open(source, O_RDONLY);
-  if (source_fd < 0)
-    goto fail_paths;
+  ArchiveResources resources = {
+      .destination = kual_join_path(documents_dir, filename),
+      .temporary = kual_join_path(documents_dir, ".kual-next-log.XXXXXX"),
+      .source_fd = -1,
+      .destination_fd = -1,
+  };
+  int result = -1;
+  resources.source_fd = open(source, O_RDONLY);
+  if (resources.source_fd < 0)
+    goto cleanup;
   struct stat st;
-  if (fstat(source_fd, &st) != 0)
-    goto fail_source;
-  int destination_fd = mkstemp(template);
-  if (destination_fd < 0)
-    goto fail_source;
-  (void)fchmod(destination_fd, st.st_mode & 07777);
+  if (fstat(resources.source_fd, &st) != 0)
+    goto cleanup;
+  resources.destination_fd = mkstemp(resources.temporary);
+  if (resources.destination_fd < 0)
+    goto cleanup;
+  resources.temporary_exists = true;
+  (void)fchmod(resources.destination_fd, st.st_mode & 07777);
 
   char buffer[16384];
-  int result = 0;
   for (;;) {
-    ssize_t count = read(source_fd, buffer, sizeof(buffer));
+    ssize_t count = read(resources.source_fd, buffer, sizeof(buffer));
     if (count < 0) {
       if (errno == EINTR)
         continue;
-      result = -1;
-      break;
+      goto cleanup;
     }
     if (!count)
       break;
-    if (write_all(destination_fd, buffer, (size_t)count) != 0) {
-      result = -1;
-      break;
-    }
+    if (write_all(resources.destination_fd, buffer, (size_t)count) != 0)
+      goto cleanup;
   }
-  if (result == 0 && fsync(destination_fd) != 0)
-    result = -1;
-  if (close(destination_fd) != 0)
-    result = -1;
-  destination_fd = -1;
-  if (close(source_fd) != 0)
-    result = -1;
-  source_fd = -1;
-  if (result == 0 && rename(template, destination) != 0)
-    result = -1;
-  if (result == 0 && unlink(source) != 0)
-    result = -1;
-  if (result != 0) {
-    int saved = errno;
-    unlink(template);
-    free(template);
-    free(destination);
-    errno = saved;
-    return -1;
+  if (fsync(resources.destination_fd) != 0 ||
+      close_owned_fd(&resources.destination_fd) != 0 ||
+      close_owned_fd(&resources.source_fd) != 0)
+    goto cleanup;
+  if (rename(resources.temporary, resources.destination) != 0)
+    goto cleanup;
+  resources.temporary_exists = false;
+  if (unlink(source) != 0)
+    goto cleanup;
+  if (destination_out) {
+    *destination_out = resources.destination;
+    resources.destination = NULL;
   }
-  free(template);
-  if (destination_out)
-    *destination_out = destination;
-  else
-    free(destination);
-  return 0;
+  result = 0;
 
-fail_source: {
-  int saved = errno;
-  close(source_fd);
-  free(template);
-  free(destination);
-  errno = saved;
-  return -1;
-}
-fail_paths:
-  free(template);
-  free(destination);
-  return -1;
+cleanup:
+  archive_resources_cleanup(&resources);
+  return result;
 }
 
 const char *kual_builtin_action_name(KualBuiltinAction action) {

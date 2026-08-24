@@ -138,6 +138,11 @@ static void test_log_archive(void) {
   assert_text(source, "preserve on failure\n");
   free(missing);
 
+  /* Opening a directory succeeds on Linux, so this exercises cleanup after
+   * the temporary archive has been created and the subsequent read fails. */
+  assert(kual_archive_log(directory, documents, 0, NULL) == -1);
+  assert_text(expected, "first line\nsecond line\n");
+
   DIR *dir = opendir(documents);
   assert(dir);
   struct dirent *entry;
