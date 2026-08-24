@@ -125,4 +125,20 @@ fi
 grep -q 'invalid JSON menu' "$tmpdir/broken.err"
 ! grep -q 'Broken dependency' "$tmpdir/broken.out"
 
+mkdir -p "$tmpdir/config-error/extensions"
+ln -s KUAL.cfg "$tmpdir/config-error/extensions/KUAL.cfg"
+if "$binary" --validate --extensions "$tmpdir/config-error/extensions" \
+    > "$tmpdir/config-error/out" 2> "$tmpdir/config-error/err"; then
+    echo "unreadable configuration unexpectedly passed validation" >&2
+    exit 1
+fi
+grep -q 'cannot open configuration:' "$tmpdir/config-error/err"
+
+if "$binary" --validate --extensions "$tmpdir/missing-extensions" \
+    > "$tmpdir/missing.out" 2> "$tmpdir/missing.err"; then
+    echo "missing extensions directory unexpectedly passed validation" >&2
+    exit 1
+fi
+grep -q 'cannot inspect directory:' "$tmpdir/missing.err"
+
 echo "host parser tests passed"

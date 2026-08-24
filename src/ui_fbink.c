@@ -183,9 +183,13 @@ char *kual_device_model_probe(void) {
   FBInkConfig cfg = {0};
   cfg.is_quiet = true;
   int fd = fbink_open();
-  if (fd < 0)
+  if (fd < 0) {
+    kual_log("cannot open framebuffer while probing Kindle model: %d", fd);
     return NULL;
-  if (fbink_init(fd, &cfg) != 0) {
+  }
+  int result = fbink_init(fd, &cfg);
+  if (result != 0) {
+    kual_log("cannot initialize FBInk while probing Kindle model: %d", result);
     fbink_close(fd);
     return NULL;
   }
@@ -276,8 +280,11 @@ static bool ui_inputs_grab(UI *ui, bool grab) {
 
 static void input_discard(InputDevice *input) {
   struct input_event events[32];
-  while (read(input->fd, events, sizeof(events)) > 0) {
+  ssize_t got;
+  while ((got = read(input->fd, events, sizeof(events))) > 0) {
   }
+  if (got < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+    kual_log("cannot discard input from fd %d: %s", input->fd, strerror(errno));
   input->down = input->reported_down = input->release_pending = false;
 }
 
@@ -379,6 +386,19 @@ static int ui_reinit(UI *ui) {
   return 0;
 }
 
+static bool load_ot_font(const char *path, FBInkOTConfig *config) {
+  if (access(path, R_OK) != 0) {
+    kual_log("cannot read bundled font %s: %s", path, strerror(errno));
+    return false;
+  }
+  int result = fbink_add_ot_font_v2(path, FNT_REGULAR, config);
+  if (result != 0) {
+    kual_log("cannot load bundled font %s: %d", path, result);
+    return false;
+  }
+  return true;
+}
+
 static int ui_init(UI *ui) {
   memset(ui, 0, sizeof(*ui));
   ui->fbfd = ui->power_fd = -1;
@@ -389,27 +409,27 @@ static int ui_init(UI *ui) {
   ui->draw_cfg.is_bgless = true;
   ui->draw_cfg.wfm_mode = WFM_GC16;
   ui->fbfd = fbink_open();
-  if (ui->fbfd < 0)
+  if (ui->fbfd < 0) {
+    kual_log("cannot open framebuffer with FBInk: %d", ui->fbfd);
     return -1;
-  if (fbink_init(ui->fbfd, &ui->draw_cfg) != 0)
+  }
+  int result = fbink_init(ui->fbfd, &ui->draw_cfg);
+  if (result != 0) {
+    kual_log("cannot initialize FBInk: %d", result);
     return -1;
+  }
   fbink_get_state(&ui->draw_cfg, &ui->state);
   const char *font = "/mnt/us/kual-next/fonts/NotoSans.ttf";
-  if (access(font, R_OK) == 0 &&
-      fbink_add_ot_font_v2(font, FNT_REGULAR, &ui->text_cfg) == 0)
-    ui->opentype_ready = true;
+  ui->opentype_ready = load_ot_font(font, &ui->text_cfg);
   const char *symbols = "/mnt/us/kual-next/fonts/NotoSansSymbols2-Regular.otf";
-  if (access(symbols, R_OK) == 0 &&
-      fbink_add_ot_font_v2(symbols, FNT_REGULAR, &ui->symbol_cfg) == 0)
-    ui->symbols_ready = true;
+  ui->symbols_ready = load_ot_font(symbols, &ui->symbol_cfg);
   const char *music_symbols = "/mnt/us/kual-next/fonts/NotoSansSymbols.ttf";
-  if (access(music_symbols, R_OK) == 0 &&
-      fbink_add_ot_font_v2(music_symbols, FNT_REGULAR, &ui->music_symbol_cfg) ==
-          0)
-    ui->music_symbols_ready = true;
+  ui->music_symbols_ready = load_ot_font(music_symbols, &ui->music_symbol_cfg);
   ui_layout(ui);
-  if (ui_inputs_open(ui) != 0)
+  if (ui_inputs_open(ui) != 0) {
+    kual_log("cannot find a usable Kindle input device");
     return -1;
+  }
   if (power_events_open(ui) != 0)
     kual_log("cannot monitor Kindle screen-saver events: %s", strerror(errno));
   return 0;
@@ -1176,6 +1196,8 @@ static TapResult process_input(UI *ui, InputDevice *input) {
       }
     }
   }
+  if (got < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+    kual_log("cannot read input fd %d: %s", input->fd, strerror(errno));
   return result;
 }
 
@@ -1214,12 +1236,22 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
     if (ready < 0) {
       if (errno == EINTR)
         continue;
-      break;
+      kual_log("input event poll failed: %s", strerror(errno));
+      ui_cleanup(&ui);
+      return 1;
     }
     if (monitor_power && fds[0].revents & (POLLIN | POLLHUP | POLLERR))
       power_events_read(&ui);
-    for (size_t i = 0; i < ui.input_count; i++)
-      if (fds[input_offset + i].revents & POLLIN) {
+    bool input_failed = false;
+    for (size_t i = 0; i < ui.input_count; i++) {
+      short revents = fds[input_offset + i].revents;
+      if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        kual_log("input fd %d poll failure (revents=0x%x)", ui.inputs[i].fd,
+                 (unsigned int)(unsigned short)revents);
+        input_failed = true;
+        continue;
+      }
+      if (revents & POLLIN) {
         if (ui.screen_saver_active) {
           input_discard(&ui.inputs[i]);
           continue;
@@ -1235,6 +1267,11 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
             return result - 2;
         }
       }
+    }
+    if (input_failed) {
+      ui_cleanup(&ui);
+      return 1;
+    }
     if (ui.resume_redraw_pending && resume_redraw_timeout(&ui) == 0)
       finish_resume_redraw(&ui);
   }

@@ -324,7 +324,12 @@ static void discover_dir(KualMenu *menu, const char *path, int depth,
                          KualErrors *errors) {
   struct stat st;
   int rc = follow ? stat(path, &st) : lstat(path, &st);
-  if (rc || !S_ISDIR(st.st_mode) || visited(seen, &st))
+  if (rc) {
+    kual_errors_add(errors, path, "cannot inspect directory: %s",
+                    strerror(errno));
+    return;
+  }
+  if (!S_ISDIR(st.st_mode) || visited(seen, &st))
     return;
   DIR *dir = opendir(path);
   if (!dir) {
@@ -342,11 +347,13 @@ static void discover_dir(KualMenu *menu, const char *path, int depth,
     }
     struct stat cs;
     int src = follow ? stat(child, &cs) : lstat(child, &cs);
-    if (!src && S_ISDIR(cs.st_mode) && depth < max_depth) {
+    if (src) {
+      kual_errors_add(errors, child, "cannot inspect path: %s",
+                      strerror(errno));
+    } else if (S_ISDIR(cs.st_mode) && depth < max_depth) {
       discover_dir(menu, child, depth + 1, max_depth, follow, exclude, files,
                    seen, errors);
-    } else if (!src && S_ISREG(cs.st_mode) &&
-               !strcmp(de->d_name, "config.xml")) {
+    } else if (S_ISREG(cs.st_mode) && !strcmp(de->d_name, "config.xml")) {
       char *xml = kual_read_file(child, NULL);
       if (!xml)
         kual_errors_add(errors, child, "cannot read config.xml: %s",
@@ -371,7 +378,9 @@ static void discover_dir(KualMenu *menu, const char *path, int depth,
     }
     free(child);
   }
-  closedir(dir);
+  if (closedir(dir) != 0)
+    kual_errors_add(errors, path, "cannot close directory: %s",
+                    strerror(errno));
 }
 
 static int tok_skip(const jsmntok_t *tokens, int count, int index) {

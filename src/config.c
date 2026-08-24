@@ -54,8 +54,13 @@ static char *trim(char *s) {
 
 int kual_config_load(KualConfig *config, const char *path, KualErrors *errors) {
   FILE *f = fopen(path, "r");
-  if (!f)
-    return errno == ENOENT ? 0 : -1;
+  if (!f) {
+    if (errno == ENOENT)
+      return 0;
+    kual_errors_add(errors, path, "cannot open configuration: %s",
+                    strerror(errno));
+    return -1;
+  }
   char *line = NULL;
   size_t cap = 0;
   unsigned long lineno = 0;
@@ -80,10 +85,17 @@ int kual_config_load(KualConfig *config, const char *path, KualErrors *errors) {
     }
     kual_config_set(config, key, value);
   }
-  if (ferror(f))
+  int result = 0;
+  if (ferror(f)) {
     kual_errors_add(errors, path, "failed reading configuration near line %lu",
                     lineno);
+    result = -1;
+  }
   free(line);
-  fclose(f);
-  return 0;
+  if (fclose(f) != 0) {
+    kual_errors_add(errors, path, "failed closing configuration: %s",
+                    strerror(errno));
+    result = -1;
+  }
+  return result;
 }
