@@ -1,4 +1,4 @@
-local Dispatcher = require("dispatcher") -- luacheck:ignore
+local Dispatcher = require("dispatcher")
 local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
@@ -7,16 +7,18 @@ local logger = require("logger")
 local _ = require("gettext")
 
 local SH_INTEGRATION_CHECK = "test -x /var/local/kmc/bin/sh_integration_launcher"
-local LAUNCH_COMMAND = "/bin/sh -c '"
-    .. "marker=/var/tmp/kual-next-return-to-koreader; "
-    .. ": >\"$marker\" || exit 1; "
-    .. "while pidof reader.lua >/dev/null 2>&1 || "
-    .. "pidof koreader.sh >/dev/null 2>&1; do sleep 1; done; "
-    .. "if ! lipc-set-prop com.lab126.appmgrd start "
-    .. "\"app://tech.hackerdude.shell_integration.launcher"
-    .. "/mnt/us/documents/KUAL%20Next.sh\"; then "
-    .. "rm -f \"$marker\"; exit 1; fi' "
-    .. ">>/var/tmp/kual-next.log 2>&1 &"
+local LAUNCH_COMMAND = [=[/bin/sh -c '
+marker=/var/tmp/kual-next-return-to-koreader
+: >"$marker" || exit 1
+while pidof reader.lua >/dev/null 2>&1 || pidof koreader.sh >/dev/null 2>&1; do
+    sleep 1
+done
+if ! lipc-set-prop com.lab126.appmgrd start \
+    "app://tech.hackerdude.shell_integration.launcher/mnt/us/documents/KUAL%20Next.sh"; then
+    rm -f "$marker"
+    exit 1
+fi
+' >>/var/tmp/kual-next.log 2>&1 &]=]
 
 local KUALNext = WidgetContainer:extend{
     name = "kualnext",
