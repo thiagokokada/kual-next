@@ -99,6 +99,14 @@ void kual_log(const char *format, ...) {
   FILE *f = fopen(KUAL_DEFAULT_LOG, "a");
   if (!f)
     return;
+  struct timespec now;
+  struct tm local;
+  if (clock_gettime(CLOCK_REALTIME, &now) == 0 &&
+      localtime_r(&now.tv_sec, &local)) {
+    char timestamp[32];
+    if (strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &local))
+      fprintf(f, "%s.%03ld ", timestamp, now.tv_nsec / 1000000L);
+  }
   va_list ap;
   va_start(ap, format);
   vfprintf(f, format, ap);

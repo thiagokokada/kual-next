@@ -13,7 +13,7 @@ statusbar_owned=0
 child_pid=
 
 log_message() {
-    printf '%s\n' "$*" >>"$log"
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$log"
 }
 
 statusbar_running() {
