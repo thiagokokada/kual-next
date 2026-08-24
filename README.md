@@ -11,12 +11,13 @@ evdev directly; Java, Kindlets, and Booklets are not required.
 ### Before you start
 
 KUAL Next is for jailbroken Kindles running firmware 5.16.3 or newer. It does
-not jailbreak your Kindle. You can open it either through **KOReader** or
-through **SH Integration**, which makes `.sh` launchers appear as books in the
-Kindle library. You do not need to install the old Java-based KUAL launcher.
+not jailbreak your Kindle. Your jailbreak must include **SH Integration**,
+which makes `.sh` launchers appear as books in the Kindle library and provides
+the application handoff used by the KOReader plugin. You do not need to install
+the old Java-based KUAL launcher.
 
-If KOReader is installed, or if you can already open other `.sh` launchers from
-your Kindle library, your device is ready.
+If you can already open other `.sh` launchers from your Kindle library, your
+device is ready.
 
 ### Installation
 
@@ -40,7 +41,6 @@ your Kindle library, your device is ready.
    documents/KUAL Next.sh
    kual-next/bin/kual-next
    koreader/plugins/kualnext.koplugin/main.lua
-   koreader/plugins/kualnext.koplugin/launcher.sh
    ```
 
 6. Safely eject the Kindle and unplug the USB cable.
@@ -51,8 +51,8 @@ your Kindle library, your device is ready.
 If KOReader is installed, restart it after installing KUAL Next. You can then
 open the launcher from **Tools → More tools → KUAL Next** or assign the
 **Open KUAL Next** action to a gesture. KOReader closes before opening the
-launcher and starts again after the launcher or an `exitmenu` application
-closes.
+launcher through SH Integration, then starts again after the launcher or an
+`exitmenu` application closes.
 
 ### Updating
 

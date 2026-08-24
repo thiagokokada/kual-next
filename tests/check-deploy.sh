@@ -11,6 +11,8 @@ grep -Fq 'launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}' \
 	"$root/assets/KUAL Next.sh"
 grep -Fq 'extensions=${KUAL_NEXT_EXTENSIONS:-}' "$root/assets/KUAL Next.sh"
 grep -Fxq '# DontUseFBInk' "$root/assets/KUAL Next.sh"
+grep -Fq 'return_marker=/var/tmp/kual-next-return-to-koreader' "$root/assets/KUAL Next.sh"
+grep -Fq 'exec /mnt/us/koreader/koreader.sh --asap' "$root/assets/KUAL Next.sh"
 
 if sh "$root/scripts/deploy-kindle.sh" >"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "deployment without arguments unexpectedly succeeded" >&2

@@ -69,8 +69,6 @@ test: format-check $(HOST_BINARY) $(TEST_BINARY) sanitize
 	sh ./tests/check-deploy.sh
 	sh ./tests/check-device-ui.sh
 	$(LUAJIT) tests/koreader_plugin.lua "$(KOREADER_PLUGIN)/main.lua" "$(KOREADER_PLUGIN)/_meta.lua"
-	sh -n "$(KOREADER_PLUGIN)/launcher.sh"
-	test -x "$(KOREADER_PLUGIN)/launcher.sh"
 	sh ./tests/check-toolchain.sh
 	sh ./tests/check-release.sh
 	actionlint
@@ -122,7 +120,6 @@ package: check
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
 	cp "$(KOREADER_PLUGIN)/main.lua" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/main.lua"
 	cp "$(KOREADER_PLUGIN)/_meta.lua" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/_meta.lua"
-	cp "$(KOREADER_PLUGIN)/launcher.sh" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/launcher.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
 	rm -f "$(PACKAGE)"
 	cd "$(BUILD_DIR)/package" && find . -type f -print | LC_ALL=C sort | zip -X -q "$(CURDIR)/$(PACKAGE)" -@
