@@ -24,6 +24,7 @@
         git
         gnumake
         gnutar
+        luajit
         openssh
         perl
         pkg-config

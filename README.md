@@ -11,12 +11,12 @@ evdev directly; Java, Kindlets, and Booklets are not required.
 ### Before you start
 
 KUAL Next is for jailbroken Kindles running firmware 5.16.3 or newer. It does
-not jailbreak your Kindle. Your jailbreak must also include **SH Integration**,
-which is what makes `.sh` launchers appear as books in the Kindle library. You
-do not need to install the old Java-based KUAL launcher.
+not jailbreak your Kindle. You can open it either through **KOReader** or
+through **SH Integration**, which makes `.sh` launchers appear as books in the
+Kindle library. You do not need to install the old Java-based KUAL launcher.
 
-If you can already open other `.sh` launchers from your Kindle library, your
-device is ready.
+If KOReader is installed, or if you can already open other `.sh` launchers from
+your Kindle library, your device is ready.
 
 ### Installation
 
@@ -27,30 +27,39 @@ device is ready.
    named **Source code**.
 3. Connect your Kindle to your computer with a USB cable and open the Kindle
    drive.
-4. Unzip the downloaded file on your computer. Copy both the `documents` and
-   `kual-next` folders to the top level of the Kindle drive—the same place
-   where the existing `documents` folder is located. If your computer asks,
-   choose to merge the `documents` folders and replace existing KUAL Next
-   files. Do not delete your other documents.
+4. Unzip the downloaded file on your computer. Copy the `documents`,
+   `kual-next`, and `koreader` folders to the top level of the Kindle drive—the
+   same place where the existing `documents` and `koreader` folders are
+   located. If your computer asks, choose to merge the folders and replace
+   existing KUAL Next files. Do not delete your other documents or KOReader
+   files.
 5. Check that the files are not inside an extra folder. The Kindle drive should
    contain these paths:
 
    ```text
    documents/KUAL Next.sh
    kual-next/bin/kual-next
+   koreader/plugins/kualnext.koplugin/main.lua
+   koreader/plugins/kualnext.koplugin/launcher.sh
    ```
 
-6. Safely eject the Kindle, unplug the USB cable, and wait for its library to
-   refresh.
-7. Find **KUAL Next** in the Kindle library and tap it to open the launcher.
-   Existing compatible extensions in the Kindle's `extensions` folder should
-   appear automatically.
+6. Safely eject the Kindle and unplug the USB cable.
+7. To launch from the Kindle library, wait for it to refresh, find **KUAL
+   Next**, and tap it. Existing compatible extensions in the Kindle's
+   `extensions` folder should appear automatically.
+
+If KOReader is installed, restart it after installing KUAL Next. You can then
+open the launcher from **Tools → More tools → KUAL Next** or assign the
+**Open KUAL Next** action to a gesture. KOReader closes before opening the
+launcher and starts again after the launcher or an `exitmenu` application
+closes.
 
 ### Updating
 
 Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and repeat
 the copy steps above. Allow your computer to replace the existing KUAL Next
-files. Your installed extensions are stored separately and will not be removed.
+files, then restart KOReader if it is installed. Your installed extensions are
+stored separately and will not be removed.
 
 ## Supported extension contract
 
@@ -68,7 +77,7 @@ scope.
 
 | Area | Limitation |
 | --- | --- |
-| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. It suppresses the KPP status bar while visible and redraws after screen unlock, but unrelated framework windows may still repaint over it. |
+| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. Its launch wrappers suppress the separate KPP status bar while it is visible, and it redraws after screen unlock, but unrelated framework windows may still repaint over it. |
 | Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |

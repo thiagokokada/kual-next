@@ -5,6 +5,7 @@ VERSION := $(strip $(shell cat VERSION))
 BUILD_DIR := build
 DIST_DIR := dist
 HOST_CC ?= cc
+LUAJIT ?= luajit
 HOST_CFLAGS ?= -O2 -g -std=c11 -Wall -Wextra -Wpedantic -Werror
 SANITIZER_CFLAGS ?= -O1 -g -std=c11 -Wall -Wextra -Wpedantic -Werror -fno-omit-frame-pointer -fsanitize=address,undefined
 SSH ?= ssh
@@ -36,6 +37,7 @@ DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) 
 	$(BUILD_DIR)/kindle/yxml.o
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
+KOREADER_PLUGIN := assets/koreader/kualnext.koplugin
 
 .PHONY: all host format-check test sanitize toolchain kindle check package deploy device-ui-test clean
 all: host
@@ -66,6 +68,9 @@ test: format-check $(HOST_BINARY) $(TEST_BINARY) sanitize
 	sh ./tests/check-fonts.sh
 	sh ./tests/check-deploy.sh
 	sh ./tests/check-device-ui.sh
+	$(LUAJIT) tests/koreader_plugin.lua "$(KOREADER_PLUGIN)/main.lua" "$(KOREADER_PLUGIN)/_meta.lua"
+	sh -n "$(KOREADER_PLUGIN)/launcher.sh"
+	test -x "$(KOREADER_PLUGIN)/launcher.sh"
 	sh ./tests/check-toolchain.sh
 	sh ./tests/check-release.sh
 	actionlint
@@ -103,7 +108,7 @@ check: test $(DEVICE_BINARY)
 
 package: check
 	rm -rf "$(BUILD_DIR)/package"
-	mkdir -p "$(BUILD_DIR)/package/kual-next/bin" "$(BUILD_DIR)/package/kual-next/fonts" "$(BUILD_DIR)/package/kual-next/LICENSES" "$(BUILD_DIR)/package/documents" "$(DIST_DIR)"
+	mkdir -p "$(BUILD_DIR)/package/kual-next/bin" "$(BUILD_DIR)/package/kual-next/fonts" "$(BUILD_DIR)/package/kual-next/LICENSES" "$(BUILD_DIR)/package/documents" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin" "$(DIST_DIR)"
 	cp $(DEVICE_BINARY) "$(BUILD_DIR)/package/kual-next/bin/kual-next"
 	cp LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/KUAL-Next-GPL-3.0-or-later.txt"
 	cp third_party/JSMN-LICENSE "$(BUILD_DIR)/package/kual-next/LICENSES/jsmn-MIT.txt"
@@ -115,7 +120,11 @@ package: check
 	cp assets/icons/kual-next.png "$(BUILD_DIR)/package/kual-next/icon.png"
 	cp "$(FBINK_DIR)/LICENSE" "$(BUILD_DIR)/package/kual-next/LICENSES/FBInk-GPL-3.0-or-later.txt"
 	cp "assets/KUAL Next.sh" "$(BUILD_DIR)/package/documents/KUAL Next.sh"
+	cp "$(KOREADER_PLUGIN)/main.lua" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/main.lua"
+	cp "$(KOREADER_PLUGIN)/_meta.lua" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/_meta.lua"
+	cp "$(KOREADER_PLUGIN)/launcher.sh" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/launcher.sh"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
+	rm -f "$(PACKAGE)"
 	cd "$(BUILD_DIR)/package" && find . -type f -print | LC_ALL=C sort | zip -X -q "$(CURDIR)/$(PACKAGE)" -@
 
 deploy:
