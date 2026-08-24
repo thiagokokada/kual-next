@@ -11,10 +11,9 @@ evdev directly; Java, Kindlets, and Booklets are not required.
 ### Before you start
 
 KUAL Next is for jailbroken Kindles running firmware 5.16.3 or newer. It does
-not jailbreak your Kindle. Your jailbreak must include **SH Integration**,
-which makes `.sh` launchers appear as books in the Kindle library and provides
-the application handoff used by the KOReader plugin. You do not need to install
-the old Java-based KUAL launcher.
+not jailbreak your Kindle. Your jailbreak must also include **SH Integration**,
+which is what makes `.sh` launchers appear as books in the Kindle library. You
+do not need to install the old Java-based KUAL launcher.
 
 If you can already open other `.sh` launchers from your Kindle library, your
 device is ready.
@@ -30,10 +29,10 @@ device is ready.
    drive.
 4. Unzip the downloaded file on your computer. Copy the `documents`,
    `kual-next`, and `koreader` folders to the top level of the Kindle drive—the
-   same place where the existing `documents` and `koreader` folders are
-   located. If your computer asks, choose to merge the folders and replace
-   existing KUAL Next files. Do not delete your other documents or KOReader
-   files.
+   same place where the existing `documents` and `koreader` (_optional_, for
+   KOReader integration) folders are located. If your computer asks, choose to
+   merge the folders and replace existing KUAL Next files. Do not delete your
+   other documents or KOReader files.
 5. Check that the files are not inside an extra folder. The Kindle drive should
    contain these paths:
 
@@ -77,7 +76,7 @@ scope.
 
 | Area | Limitation |
 | --- | --- |
-| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. Its launch wrappers suppress the separate KPP status bar while it is visible, and it redraws after screen unlock, but unrelated framework windows may still repaint over it. |
+| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. It suppresses the KPP status bar while visible and redraws after screen unlock, but unrelated framework windows may still repaint over it. |
 | Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
