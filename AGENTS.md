@@ -8,22 +8,23 @@ Kindlets, Booklets, pre-hard-float devices, non-JSON menus, and KUAL's legacy
 mailbox/cache protocol are intentionally out of scope.
 
 Keep compatibility with the original KUAL JSON behavior where it is relevant
-to modern extensions. First-party code is Zig; FBInk is the only C dependency.
-Use `std.json`, use zig-xml for `config.xml`, and avoid adding a large UI or
-JSON framework.
+to modern extensions. Use small C libraries and avoid adding a large UI or JSON
+framework.
 
 ## Repository layout and dependencies
 
 - `src/` contains menu parsing, condition evaluation, command execution, and
   the FBInk/evdev UI.
+- `include/kual.h` contains shared project types and interfaces.
 - `tests/fixtures/` contains representative KUAL extensions.
 - `assets/` contains the SH Integration scriptlet and bundled Noto fonts.
 - `scripts/deploy-kindle.sh` performs checked SSH package deployments for the
-  `zig build deploy` step; it must not contain a default device hostname.
+  `make deploy` target; it must not contain a default device hostname.
 - `third_party/FBInk` is a pinned recursive Git submodule. Do not replace it
   with a path outside this repository or modify its upstream sources as part
   of normal project work.
-- zig-xml is pinned through `build.zig.zon` and parses extension metadata.
+- `third_party/jsmn.h` is the vendored JSON parser.
+- `third_party/yxml.c` and `third_party/yxml.h` are the vendored XML parser.
 
 Initialize dependencies after cloning:
 
@@ -38,42 +39,54 @@ building:
 
 ```sh
 nix develop
-zig build test
+make test
+```
+
+The one-time Kindle toolchain setup downloads the checksum-verified prebuilt
+koxtoolchain release:
+
+```sh
+nix develop
+make toolchain
 ```
 
 Before handing off a Kindle-facing change, run:
 
 ```sh
 nix develop
-zig build package
+make package
 ```
 
 This runs parser tests, bundled-font coverage tests, the ARM hard-float ABI
 check, and the static-link check. The resulting archive is written under
-`dist/`. Build products, caches, and packages are generated files
+`dist/`. Build products, toolchains, caches, and packages are generated files
 and must not be committed.
 
-`zig build test` runs the unit suite in Debug and ReleaseSafe modes using
-`std.testing.allocator` for leak detection. Treat any test safety or leak
-report as a failed verification.
+`make test` also builds and runs the host unit suite with AddressSanitizer,
+UndefinedBehaviorSanitizer, and leak detection enabled. To run only the
+sanitizer suite:
 
-The `.version` field in `build.zig.zon` is the single version source for both
-the compiled UI and package filename. Change it for releases; do not add
-another version source.
+```sh
+nix develop
+make sanitize
+```
 
-Format changed first-party Zig files with `zig fmt`. Do not reformat vendored
-sources under `third_party/`.
+Treat any sanitizer report as a failed verification.
+
+The root `VERSION` file is the single version source for both the compiled UI
+and package filename. Change it for releases; do not add another version macro.
+
+After changing first-party C sources or headers, run `clang-format -i` on each
+changed file from inside `nix develop`, then verify those files with
+`clang-format --dry-run --Werror`. Do not reformat vendored sources under
+`third_party/`.
 
 ## Implementation constraints
 
-- Use the Zig toolchain pinned by `flake.nix` and keep the host and Kindle
-  builds warning-clean.
+- Write portable C11 and keep the existing warning-clean build flags.
 - Continue using FBInk for drawing and Linux evdev for input.
 - Keep the device binary statically linked unless a separate design decision
   explicitly changes that constraint.
-- Use Zig filesystem, process, time, and allocation APIs for first-party code.
-  C imports should remain narrow interfaces for FBInk, Linux device APIs, and
-  musl POSIX regex.
 - Use the bundled Noto fonts. Never load fonts or resources from the Kindle's
   Java installation.
 - Preserve KUAL semantics for `exitmenu`, `checked`, `refresh`, `status`,
@@ -116,7 +129,7 @@ structural, behavior, and visual fixes, create separate verified commits for
 each concern. Preserve existing user changes and never rewrite or reset history
 unless explicitly requested.
 
-For a release, update `build.zig.zon`, merge it to `main`, then manually run the
+For a release, update `VERSION`, merge it to `main`, then manually run the
 GitHub `Release` workflow with the matching stable `vMAJOR.MINOR.PATCH` tag. The
 workflow creates the tag at the successfully built `main` commit when it is
 missing, and must never move an existing tag.

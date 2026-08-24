@@ -23,16 +23,9 @@ if ! git -C "$root" rev-parse --verify "$tag_ref^{commit}" >/dev/null 2>&1; then
 	release_ref="$main_ref"
 fi
 
-manifest=$(git -C "$root" show "$release_ref:build.zig.zon")
-version=$(printf '%s\n' "$manifest" |
-	sed -n 's/^[[:space:]]*\.version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
-if [ -z "$version" ] || [ "$(printf '%s\n' "$version" | wc -l)" -ne 1 ]; then
-	printf 'Could not read one version from build.zig.zon at %s.\n' \
-		"$release_ref" >&2
-	exit 1
-fi
+version=$(git -C "$root" show "$release_ref:VERSION")
 if [ "$tag" != "v$version" ]; then
-	printf 'Release tag %s does not match build.zig.zon version %s at %s.\n' \
+	printf 'Release tag %s does not match VERSION %s at %s.\n' \
 		"$tag" "$version" "$release_ref" >&2
 	exit 1
 fi

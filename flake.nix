@@ -16,13 +16,21 @@
       devPackages = with pkgs; [
         actionlint
         bash
+        clang-tools
+        curl
         file
         fontconfig
+        gcc
         git
+        gnumake
+        gnutar
         openssh
+        patch
+        perl
+        pkg-config
         unzip
         zip
-        zig_0_16
+        zstd
       ];
     in
     {
