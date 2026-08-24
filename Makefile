@@ -18,6 +18,7 @@ HOST_BINARY := $(BUILD_DIR)/host/$(PROJECT)
 TEST_SOURCES := $(CORE_SOURCES) third_party/yxml.c tests/unit.c
 TEST_BINARY := $(BUILD_DIR)/host/$(PROJECT)-tests
 SANITIZER_BINARY := $(BUILD_DIR)/host/$(PROJECT)-tests-sanitized
+FORMAT_SOURCES := $(wildcard src/*.c include/*.h tests/*.c)
 
 FBINK_DIR := $(CURDIR)/third_party/FBInk
 FBINK_LIB := $(FBINK_DIR)/Release/libfbink.a
@@ -36,7 +37,7 @@ DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) 
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
 
-.PHONY: all host test sanitize toolchain kindle check package deploy device-ui-test clean
+.PHONY: all host format-check test sanitize toolchain kindle check package deploy device-ui-test clean
 all: host
 
 host: $(HOST_BINARY)
@@ -56,7 +57,10 @@ $(SANITIZER_BINARY): $(TEST_SOURCES) include/kual.h third_party/jsmn.h third_par
 sanitize: $(SANITIZER_BINARY)
 	ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 $(SANITIZER_BINARY) tests/fixtures/extensions
 
-test: $(HOST_BINARY) $(TEST_BINARY) sanitize
+format-check:
+	clang-format --dry-run --Werror $(FORMAT_SOURCES)
+
+test: format-check $(HOST_BINARY) $(TEST_BINARY) sanitize
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	$(TEST_BINARY) tests/fixtures/extensions
 	sh ./tests/check-fonts.sh
