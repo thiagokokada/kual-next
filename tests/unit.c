@@ -191,6 +191,72 @@ static void test_privilege_indicator(void) {
   assert(!strcmp(kual_privilege_indicator(false), "%"));
 }
 
+static void test_ui_config(void) {
+  KualConfig config;
+  kual_config_init(&config);
+  assert(kual_config_page_size(&config, KUAL_DEFAULT_PAGE_ROWS) ==
+         KUAL_DEFAULT_PAGE_ROWS);
+  assert(kual_config_show_status(&config));
+
+  kual_config_set(&config, "page_size", "5");
+  assert(kual_config_page_size(&config, KUAL_DEFAULT_PAGE_ROWS) == 5U);
+  kual_config_set(&config, "page_size", "0");
+  assert(kual_config_page_size(&config, KUAL_DEFAULT_PAGE_ROWS) ==
+         KUAL_DEFAULT_PAGE_ROWS);
+  kual_config_set(&config, "page_size", "invalid");
+  assert(kual_config_page_size(&config, KUAL_DEFAULT_PAGE_ROWS) ==
+         KUAL_DEFAULT_PAGE_ROWS);
+
+  kual_config_set(&config, "no_show_status", "true");
+  assert(!kual_config_show_status(&config));
+  kual_config_set(&config, "no_show_status", "TRUE");
+  assert(!kual_config_show_status(&config));
+  kual_config_set(&config, "no_show_status", "false");
+  assert(kual_config_show_status(&config));
+  kual_config_free(&config);
+}
+
+static void test_status_routing(void) {
+  char footer[32] = "footer", breadcrumb[32] = "breadcrumb";
+  kual_route_status(true, footer, sizeof(footer), breadcrumb,
+                    sizeof(breadcrumb), "in footer");
+  assert(!strcmp(footer, "in footer"));
+  assert(!strcmp(breadcrumb, "breadcrumb"));
+
+  kual_route_status(false, footer, sizeof(footer), breadcrumb,
+                    sizeof(breadcrumb), "in breadcrumb");
+  assert(!strcmp(footer, "in footer"));
+  assert(!strcmp(breadcrumb, "in breadcrumb"));
+}
+
+static void test_navigation(void) {
+  KualNavigation navigation;
+  kual_navigation_init(&navigation);
+  assert(navigation.depth == 0U);
+  assert(kual_navigation_page(&navigation) == 0U);
+
+  kual_navigation_next_page(&navigation, 3U);
+  assert(kual_navigation_page(&navigation) == 1U);
+  assert(kual_navigation_enter(&navigation));
+  assert(navigation.depth == 1U);
+  assert(kual_navigation_page(&navigation) == 0U);
+  kual_navigation_next_page(&navigation, 4U);
+  kual_navigation_next_page(&navigation, 4U);
+  assert(kual_navigation_page(&navigation) == 2U);
+
+  kual_navigation_back(&navigation);
+  assert(navigation.depth == 0U);
+  assert(kual_navigation_page(&navigation) == 1U);
+  assert(kual_navigation_enter(&navigation));
+  assert(kual_navigation_page(&navigation) == 0U);
+  kual_navigation_top(&navigation);
+  assert(navigation.depth == 0U);
+  assert(kual_navigation_page(&navigation) == 1U);
+
+  navigation.depth = KUAL_MAX_DEPTH;
+  assert(!kual_navigation_enter(&navigation));
+}
+
 static void test_power_event_unlock(void) {
   assert(!kual_power_event_is_unlock("exitingScreenSaver", false));
   assert(kual_power_event_is_unlock("exitingScreenSaver", true));
@@ -202,6 +268,9 @@ int main(int argc, char **argv) {
   assert(argc == 2);
   test_stderr_redirect();
   test_privilege_indicator();
+  test_ui_config();
+  test_status_routing();
+  test_navigation();
   test_power_event_unlock();
   test_sort_mode_update();
   test_log_archive();
@@ -212,6 +281,8 @@ int main(int argc, char **argv) {
   assert(errors.len == 0);
   assert(menu.extension_id_count == 2);
   assert(menu.extension_alias_count == 3);
+  assert(kual_config_page_size(&menu.config, KUAL_DEFAULT_PAGE_ROWS) == 7U);
+  assert(!kual_config_show_status(&menu.config));
 
   KualEntry *quoted = find_entry(&menu.root, "Quoted options");
   assert(quoted);

@@ -134,6 +134,46 @@ const char *kual_privilege_indicator(bool is_root) {
   return is_root ? "#" : "%";
 }
 
+void kual_route_status(bool footer_enabled, char *footer, size_t footer_size,
+                       char *breadcrumb, size_t breadcrumb_size,
+                       const char *message) {
+  char *destination = footer_enabled ? footer : breadcrumb;
+  size_t size = footer_enabled ? footer_size : breadcrumb_size;
+  if (!destination || !size)
+    return;
+  snprintf(destination, size, "%s", message ? message : "");
+}
+
+void kual_navigation_init(KualNavigation *navigation) {
+  memset(navigation, 0, sizeof(*navigation));
+}
+
+size_t kual_navigation_page(const KualNavigation *navigation) {
+  return navigation->page[navigation->depth];
+}
+
+void kual_navigation_next_page(KualNavigation *navigation, size_t page_count) {
+  if (!page_count)
+    page_count = 1U;
+  size_t *page = &navigation->page[navigation->depth];
+  *page = (*page + 1U) % page_count;
+}
+
+bool kual_navigation_enter(KualNavigation *navigation) {
+  if (navigation->depth >= KUAL_MAX_DEPTH)
+    return false;
+  navigation->depth++;
+  navigation->page[navigation->depth] = 0;
+  return true;
+}
+
+void kual_navigation_back(KualNavigation *navigation) {
+  if (navigation->depth)
+    navigation->depth--;
+}
+
+void kual_navigation_top(KualNavigation *navigation) { navigation->depth = 0; }
+
 bool kual_power_event_is_unlock(const char *event, bool screen_saver_active) {
   return screen_saver_active && event &&
          !strncmp(event, "exitingScreenSaver", 18);

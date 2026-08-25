@@ -13,6 +13,7 @@
 #define KUAL_DEFAULT_LOG "/var/tmp/kual-next.log"
 #define KUAL_DEFAULT_DOCUMENTS "/mnt/us/documents"
 #define KUAL_MAX_DEPTH 10
+#define KUAL_DEFAULT_PAGE_ROWS 10U
 
 typedef struct {
   char *key;
@@ -88,6 +89,11 @@ typedef struct {
   size_t cap;
 } KualErrors;
 
+typedef struct {
+  size_t depth;
+  size_t page[KUAL_MAX_DEPTH + 1];
+} KualNavigation;
+
 void *kual_xcalloc(size_t count, size_t size);
 void *kual_xrealloc(void *ptr, size_t size);
 char *kual_xstrdup(const char *s);
@@ -97,6 +103,9 @@ char *kual_read_file(const char *path, size_t *size_out);
 void kual_log(const char *format, ...);
 int kual_redirect_stderr(const char *path);
 const char *kual_privilege_indicator(bool is_root);
+void kual_route_status(bool footer_enabled, char *footer, size_t footer_size,
+                       char *breadcrumb, size_t breadcrumb_size,
+                       const char *message);
 bool kual_power_event_is_unlock(const char *event, bool screen_saver_active);
 int kual_set_sort_mode(const char *extensions_dir, const char *mode);
 int kual_archive_log(const char *source, const char *documents_dir, time_t when,
@@ -108,6 +117,15 @@ void kual_config_free(KualConfig *config);
 void kual_config_set(KualConfig *config, const char *key, const char *value);
 const char *kual_config_get(const KualConfig *config, const char *key);
 int kual_config_load(KualConfig *config, const char *path, KualErrors *errors);
+size_t kual_config_page_size(const KualConfig *config, size_t fallback);
+bool kual_config_show_status(const KualConfig *config);
+
+void kual_navigation_init(KualNavigation *navigation);
+size_t kual_navigation_page(const KualNavigation *navigation);
+void kual_navigation_next_page(KualNavigation *navigation, size_t page_count);
+bool kual_navigation_enter(KualNavigation *navigation);
+void kual_navigation_back(KualNavigation *navigation);
+void kual_navigation_top(KualNavigation *navigation);
 
 void kual_errors_add(KualErrors *errors, const char *source, const char *format,
                      ...);
