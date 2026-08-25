@@ -71,12 +71,12 @@ static void stop_handler(int sig) {
 
 static void power_events_close(UI *ui);
 
-static bool statusbar_owned(void) {
-  const char *value = getenv("KUAL_NEXT_STATUSBAR_STOPPED");
+static bool lifecycle_owned(const char *name) {
+  const char *value = getenv(name);
   return value && !strcmp(value, "1");
 }
 
-static int service_command(const char *path) {
+static int run_command(const char *path, char *const argv[]) {
   pid_t pid = fork();
   if (pid == 0) {
     int nullfd = open("/dev/null", O_RDWR);
@@ -86,7 +86,7 @@ static int service_command(const char *path) {
       if (nullfd > STDERR_FILENO)
         close(nullfd);
     }
-    execl(path, path, "statusbar", (char *)NULL);
+    execv(path, argv);
     _exit(127);
   }
   if (pid < 0)
@@ -96,6 +96,24 @@ static int service_command(const char *path) {
     if (errno != EINTR)
       return -1;
   return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+static int statusbar_command(const char *path) {
+  char *const argv[] = {(char *)path, "statusbar", NULL};
+  return run_command(path, argv);
+}
+
+static int pillow_command(const char *state) {
+  const char *path = "/usr/bin/lipc-set-prop";
+  char *const argv[] = {(char *)path, "com.lab126.pillow",
+                        "disableEnablePillow", (char *)state, NULL};
+  return run_command(path, argv);
+}
+
+static int awesome_command(const char *signal) {
+  const char *path = "/usr/bin/killall";
+  char *const argv[] = {(char *)path, (char *)signal, "awesome", NULL};
+  return run_command(path, argv);
 }
 
 static bool statusbar_is_running(void) {
@@ -135,19 +153,57 @@ static bool statusbar_is_running(void) {
   return strstr(output, "start/running") != NULL;
 }
 
-static void statusbar_restore_if_owned(void) {
-  if (!statusbar_owned())
-    return;
-  if (!statusbar_is_running() && service_command("/sbin/start") != 0)
+static bool statusbar_restore_if_owned(bool permanent) {
+  if (!lifecycle_owned("KUAL_NEXT_STATUSBAR_STOPPED"))
+    return true;
+  bool restored = statusbar_is_running();
+  if (!restored && statusbar_command("/sbin/start") == 0)
+    restored = true;
+  if (!restored)
     kual_log("failed to restore Kindle statusbar before action");
-  unsetenv("KUAL_NEXT_STATUSBAR_STOPPED");
+  if (permanent && restored)
+    unsetenv("KUAL_NEXT_STATUSBAR_STOPPED");
+  return restored;
 }
 
 static void statusbar_hide_if_owned(void) {
-  if (!statusbar_owned())
+  if (!lifecycle_owned("KUAL_NEXT_STATUSBAR_STOPPED"))
     return;
-  if (statusbar_is_running() && service_command("/sbin/stop") != 0)
+  if (statusbar_is_running() && statusbar_command("/sbin/stop") != 0)
     kual_log("failed to stop Kindle statusbar after resume");
+}
+
+static bool framework_restore_if_owned(bool permanent) {
+  bool restored = true;
+  if (lifecycle_owned("KUAL_NEXT_AWESOME_STOPPED")) {
+    bool awesome_restored = awesome_command("-CONT") == 0;
+    if (!awesome_restored) {
+      kual_log("failed to resume Kindle Awesome window manager");
+      restored = false;
+    }
+    if (permanent && awesome_restored)
+      unsetenv("KUAL_NEXT_AWESOME_STOPPED");
+  }
+  if (lifecycle_owned("KUAL_NEXT_PILLOW_DISABLED")) {
+    bool pillow_restored = pillow_command("enable") == 0;
+    if (!pillow_restored) {
+      kual_log("failed to restore Kindle Pillow");
+      restored = false;
+    }
+    if (permanent && pillow_restored)
+      unsetenv("KUAL_NEXT_PILLOW_DISABLED");
+  }
+  return statusbar_restore_if_owned(permanent) && restored;
+}
+
+static void framework_hide_if_owned(void) {
+  statusbar_hide_if_owned();
+  if (lifecycle_owned("KUAL_NEXT_PILLOW_DISABLED") &&
+      pillow_command("disable") != 0)
+    kual_log("failed to disable Kindle Pillow after resume");
+  if (lifecycle_owned("KUAL_NEXT_AWESOME_STOPPED") &&
+      awesome_command("-STOP") != 0)
+    kual_log("failed to pause Kindle Awesome window manager after resume");
 }
 
 const char *kual_model_from_fbink_name(const char *name) {
@@ -804,7 +860,7 @@ static void ui_draw(UI *ui) {
 }
 
 static void ui_redraw_after_resume(UI *ui) {
-  statusbar_hide_if_owned();
+  framework_hide_if_owned();
   int result = ui_reinit(ui);
   if (result < 0) {
     kual_log("FBInk reinit after unlock failed: %d", result);
@@ -853,6 +909,7 @@ static void handle_power_event(UI *ui, const char *line) {
       ui_inputs_grab(ui, false);
     ui->screen_saver_active = true;
     ui->resume_redraw_pending = false;
+    (void)framework_restore_if_owned(false);
   } else if (!strncmp(line, "outOfScreenSaver", 16)) {
     ui->screen_saver_active = true;
   } else if (kual_power_event_is_unlock(line, ui->screen_saver_active)) {
@@ -1110,7 +1167,13 @@ static int exec_and_exit(UI *ui, KualEntry *entry) {
   char *command = action_command(entry),
        *cwd = kual_xstrdup(entry->working_dir);
   ui_cleanup(ui);
-  statusbar_restore_if_owned();
+  if (!framework_restore_if_owned(true)) {
+    kual_log("refusing exitmenu action because the Kindle framework could not "
+             "be restored");
+    free(cwd);
+    free(command);
+    return 125;
+  }
   (void)kual_redirect_stderr(KUAL_DEFAULT_LOG);
   if (chdir(cwd) != 0) {
     dprintf(STDERR_FILENO, "cannot chdir to %s: %s\n", cwd, strerror(errno));
@@ -1177,7 +1240,7 @@ static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors,
       internal_message(ui, tap.entry);
       if (tap.entry->builtin_action == KUAL_BUILTIN_QUIT) {
         ui_cleanup(ui);
-        statusbar_restore_if_owned();
+        (void)framework_restore_if_owned(true);
         return 2;
       }
       if (tap.entry->builtin_action != KUAL_BUILTIN_NONE) {

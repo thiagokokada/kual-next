@@ -98,22 +98,25 @@ changed file from inside `nix develop`, then verify those files with
 
 ## Kindle framework policy
 
-The Amazon Home/framework may repaint over direct framebuffer content. KUAL
-Next may stop only the separate Upstart `statusbar` service while its UI is
-visible, provided it records whether the service was originally running and
-restores it before launching an `exitmenu` action and on every exit path. Keep
-the scriptlet supervisor fallback so a launcher crash also restores the
-service. `/sbin/start statusbar` is the on-device recovery command.
+The Amazon Home/framework may repaint over direct framebuffer content. While
+its UI is visible, KUAL Next stops the separate Upstart `statusbar` service,
+hard-disables Pillow, and sends `SIGSTOP` to the Awesome window manager. It
+must track which components it changed, temporarily restore them while the
+stock screen saver is active, and permanently restore them before launching an
+`exitmenu` action and on every exit path. Keep the scriptlet supervisor
+fallback so a launcher crash also restores the framework.
 
-Do not stop or suspend `awesome`, Pillow, `KPPMainApp`, or `lab126_gui`, and do
-not restore saved framebuffer dumps. Those broader approaches interfered with
-applications launched from the menu and could leave a blank screen after
-KOReader exited. Continue listening for Kindle screen-saver events, releasing
-input grabs while locked, and issuing a deferred full redraw after unlock.
+The on-device recovery commands are `/usr/bin/killall -CONT awesome`,
+`lipc-set-prop com.lab126.pillow disableEnablePillow enable`, and
+`/sbin/start statusbar`. Do not stop `KPPMainApp` or `lab126_gui`, and do not
+restore saved framebuffer dumps. Continue listening for Kindle screen-saver
+events, releasing input grabs while locked, and issuing a deferred full redraw
+after unlock.
 
-An Awesome-managed X11 ownership window has been considered but is explicitly
-deferred. Do not introduce X11 ownership or framework lifecycle management
-without a new user decision and an on-device recovery plan.
+An Awesome-managed X11 ownership window was tested and rejected because it did
+not reliably prevent framework repaint artifacts. Do not reintroduce an X11
+ownership window or broader framework lifecycle management without a new user
+decision and an on-device recovery plan.
 
 ## Packaging and commits
 
