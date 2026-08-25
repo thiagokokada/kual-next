@@ -2,13 +2,16 @@
 
 set -eu
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 
 sh -n "$root/assets/KUAL Next.sh"
+# These assertions intentionally match literal shell parameter expansions.
+# shellcheck disable=SC2016
 grep -Fq 'launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}' \
 	"$root/assets/KUAL Next.sh"
+# shellcheck disable=SC2016
 grep -Fq 'extensions=${KUAL_NEXT_EXTENSIONS:-}' "$root/assets/KUAL Next.sh"
 grep -Fxq '# DontUseFBInk' "$root/assets/KUAL Next.sh"
 grep -Fq 'return_marker=/var/tmp/kual-next-return-to-koreader' "$root/assets/KUAL Next.sh"
@@ -154,7 +157,7 @@ grep -q '^Usage:' "$tmpdir/error"
 package="$tmpdir/package.zip"
 printf 'test package\n' >"$package"
 if sh "$root/scripts/deploy-kindle.sh" -invalid "$package" \
-		>"$tmpdir/out" 2>"$tmpdir/error"; then
+	>"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "deployment accepted an option as a host" >&2
 	exit 1
 fi
@@ -193,8 +196,8 @@ test ! -s "$tmpdir/error"
 
 export DEPLOY_TEST_RUNNING=123
 if SSH="$mock_ssh" SCP="$mock_scp" \
-		sh "$root/scripts/deploy-kindle.sh" test@kindle "$package" \
-		>"$tmpdir/out" 2>"$tmpdir/error"; then
+	sh "$root/scripts/deploy-kindle.sh" test@kindle "$package" \
+	>"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "deployment over a running launcher unexpectedly succeeded" >&2
 	exit 1
 fi

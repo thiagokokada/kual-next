@@ -28,6 +28,8 @@
         openssh
         perl
         pkg-config
+        shellcheck
+        shfmt
         unzip
         zip
         zstd

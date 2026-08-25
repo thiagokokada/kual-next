@@ -7,7 +7,7 @@ ssh_bin=${SSH:-ssh}
 scp_bin=${SCP:-scp}
 ssh_args=${SSH_ARGS:-}
 scp_args=${SCP_ARGS:-}
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 binary=${KUAL_TEST_BINARY:-$root/build/kindle/kual-next}
 supervisor=$root/assets/KUAL\ Next.sh
 fixture=$root/tests/device-fixtures/extensions
@@ -17,10 +17,14 @@ tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 
 run_ssh() {
+	# SSH_ARGS deliberately supports multiple caller-supplied options.
+	# shellcheck disable=SC2086
 	"$ssh_bin" $ssh_args "$@"
 }
 
 run_scp() {
+	# SCP_ARGS deliberately supports multiple caller-supplied options.
+	# shellcheck disable=SC2086
 	"$scp_bin" $scp_args "$@"
 }
 

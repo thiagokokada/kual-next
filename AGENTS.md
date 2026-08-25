@@ -81,6 +81,9 @@ changed file from inside `nix develop`, then verify those files with
 `clang-format --dry-run --Werror`. Do not reformat vendored sources under
 `third_party/`.
 
+Format maintained shell scripts with `make shell-format`. Verify them with
+`make shell-format-check shellcheck`; both checks are also part of `make test`.
+
 ## Implementation constraints
 
 - Write portable C11 and keep the existing warning-clean build flags.

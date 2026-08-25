@@ -25,7 +25,7 @@ awesome_owned=0
 child_pid=
 
 log_message() {
-    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$log"
+	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$log"
 }
 
 statusbar_running() {
@@ -67,7 +67,7 @@ restore_framework() {
 	fi
 	if [ "$pillow_owned" -eq 1 ]; then
 		if "$lipc_set_prop" com.lab126.pillow disableEnablePillow enable \
-				>>"$log" 2>&1; then
+			>>"$log" 2>&1; then
 			pillow_owned=0
 		else
 			log_message "failed to restore Kindle Pillow"
@@ -76,6 +76,8 @@ restore_framework() {
 	restore_statusbar
 }
 
+# Invoked indirectly by the EXIT/HUP/INT/TERM trap below.
+# shellcheck disable=SC2329
 terminate_child() {
 	if [ -n "$child_pid" ]; then
 		kill -TERM "$child_pid" 2>/dev/null || :
@@ -104,7 +106,7 @@ fi
 # when the scriptlet started, so an already-paused framework remains untouched.
 if awesome_running; then
 	if "$lipc_set_prop" com.lab126.pillow disableEnablePillow disable \
-			>>"$log" 2>&1; then
+		>>"$log" 2>&1; then
 		pillow_owned=1
 		export KUAL_NEXT_PILLOW_DISABLED=1
 	else
@@ -136,7 +138,7 @@ child_pid=
 
 restore_framework
 if [ "$awesome_owned" -ne 0 ] || [ "$pillow_owned" -ne 0 ] ||
-		[ "$statusbar_owned" -ne 0 ]; then
+	[ "$statusbar_owned" -ne 0 ]; then
 	log_message "Kindle framework restoration incomplete; aborting handoff"
 	exit 125
 fi

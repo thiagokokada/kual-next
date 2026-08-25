@@ -6,7 +6,7 @@ main_ref=${2:-origin/main}
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 if ! printf '%s\n' "$tag" |
-    grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+	grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
 	printf 'Release tag must be stable SemVer in the form vMAJOR.MINOR.PATCH: %s\n' \
 		"$tag" >&2
 	exit 1
@@ -31,8 +31,8 @@ if [ "$tag" != "v$version" ]; then
 fi
 
 if [ "$release_ref" = "$tag_ref" ] &&
-    ! git -C "$root" merge-base --is-ancestor "$tag_ref^{commit}" \
-        "$main_ref^{commit}"; then
+	! git -C "$root" merge-base --is-ancestor "$tag_ref^{commit}" \
+		"$main_ref^{commit}"; then
 	printf 'Release tag is not contained in %s: %s\n' "$main_ref" "$tag" >&2
 	exit 1
 fi

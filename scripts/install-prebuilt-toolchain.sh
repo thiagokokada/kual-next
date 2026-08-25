@@ -14,7 +14,7 @@ stamp="$toolchain_dir/.kual-next-koxtoolchain"
 stamp_value="$release $archive_sha256"
 
 if [ -x "$compiler" ] && [ -f "$stamp" ] &&
-    [ "$(cat "$stamp")" = "$stamp_value" ]; then
+	[ "$(cat "$stamp")" = "$stamp_value" ]; then
 	"$compiler" --version | head -n 1
 	exit 0
 fi
