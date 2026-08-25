@@ -22,7 +22,6 @@
 
 #define MAX_INPUTS 16
 #define MAX_NAV_DEPTH (KUAL_MAX_DEPTH + 1)
-#define KUAL_PAGE_ROWS 10U
 
 typedef struct {
   int fd;
@@ -52,8 +51,11 @@ typedef struct {
   bool resume_redraw_pending;
   struct timespec resume_redraw_at;
   KualEntry *nav[MAX_NAV_DEPTH];
-  size_t depth;
-  size_t page;
+  KualNavigation navigation;
+  KualPrivilege privilege;
+  size_t configured_page_rows;
+  size_t page_rows;
+  bool show_status;
   unsigned int top_h, status_h, side_w, gap;
   unsigned int chrome_text_size;
   unsigned int list_y, list_h, button_x, button_w, button_h;
@@ -351,18 +353,23 @@ static void power_events_close(UI *ui) {
 
 static void ui_layout(UI *ui) {
   unsigned int width = ui->state.view_width, height = ui->state.view_height;
+  ui->page_rows = ui->configured_page_rows;
   ui->gap = width / 190U;
   if (ui->gap < 4U)
     ui->gap = 4U;
   ui->top_h = height / 25U;
   if (ui->top_h < 28U)
     ui->top_h = 28U;
-  ui->status_h = height / 25U;
-  if (ui->status_h < 28U)
-    ui->status_h = 28U;
+  ui->status_h = 0U;
+  if (ui->show_status) {
+    ui->status_h = height / 25U;
+    if (ui->status_h < 28U)
+      ui->status_h = 28U;
+  }
   ui->chrome_text_size = width / 36U;
-  unsigned int chrome_max_h =
-      ui->top_h < ui->status_h ? ui->top_h : ui->status_h;
+  unsigned int chrome_max_h = ui->top_h;
+  if (ui->show_status && ui->status_h < chrome_max_h)
+    chrome_max_h = ui->status_h;
   chrome_max_h = chrome_max_h * 3U / 4U;
   if (ui->chrome_text_size > chrome_max_h)
     ui->chrome_text_size = chrome_max_h;
@@ -371,9 +378,21 @@ static void ui_layout(UI *ui) {
   ui->side_w = width * 13U / 100U;
   ui->button_x = ui->gap / 2U + ui->side_w + ui->gap;
   ui->button_w = width - 2U * ui->button_x;
-  ui->button_h =
-      (ui->list_h - (KUAL_PAGE_ROWS - 1U) * ui->gap) / KUAL_PAGE_ROWS;
-  ui->list_h = KUAL_PAGE_ROWS * ui->button_h + (KUAL_PAGE_ROWS - 1U) * ui->gap;
+  size_t max_rows = (ui->list_h + ui->gap) / (ui->gap + 1U);
+  if (!max_rows)
+    max_rows = 1U;
+  if (ui->page_rows > max_rows)
+    ui->page_rows = max_rows;
+  ui->button_h = (ui->list_h - (ui->page_rows - 1U) * ui->gap) / ui->page_rows;
+  ui->list_h = (unsigned int)ui->page_rows * ui->button_h +
+               ((unsigned int)ui->page_rows - 1U) * ui->gap;
+}
+
+static void ui_apply_menu_config(UI *ui, const KualMenu *menu) {
+  ui->configured_page_rows =
+      kual_config_page_size(&menu->config, KUAL_DEFAULT_PAGE_ROWS);
+  ui->show_status = kual_config_show_status(&menu->config);
+  ui_layout(ui);
 }
 
 static int ui_reinit(UI *ui) {
@@ -399,8 +418,10 @@ static bool load_ot_font(const char *path, FBInkOTConfig *config) {
   return true;
 }
 
-static int ui_init(UI *ui) {
+static int ui_init(UI *ui, const KualMenu *menu) {
   memset(ui, 0, sizeof(*ui));
+  ui->privilege = kual_privilege_mode(
+      geteuid() == 0, access("/var/local/mkk/gandalf", F_OK) == 0);
   ui->fbfd = ui->power_fd = -1;
   ui->draw_cfg.is_quiet = true;
   ui->draw_cfg.fontmult = 3;
@@ -425,7 +446,7 @@ static int ui_init(UI *ui) {
   ui->symbols_ready = load_ot_font(symbols, &ui->symbol_cfg);
   const char *music_symbols = "/mnt/us/kual-next/fonts/NotoSansSymbols.ttf";
   ui->music_symbols_ready = load_ot_font(music_symbols, &ui->music_symbol_cfg);
-  ui_layout(ui);
+  ui_apply_menu_config(ui, menu);
   if (ui_inputs_open(ui) != 0) {
     kual_log("cannot find a usable Kindle input device");
     return -1;
@@ -463,7 +484,16 @@ static void print_at(UI *ui, int x, int y, const char *text, bool centered) {
   (void)fbink_print(ui->fbfd, text, &cfg);
 }
 
-static KualEntry *current_menu(UI *ui) { return ui->nav[ui->depth]; }
+static KualEntry *current_menu(UI *ui) { return ui->nav[ui->navigation.depth]; }
+
+static size_t current_page(const UI *ui) {
+  return kual_navigation_page(&ui->navigation);
+}
+
+static size_t menu_page_count(const UI *ui, const KualEntry *menu) {
+  size_t pages = (menu->child_count + 1U + ui->page_rows - 1U) / ui->page_rows;
+  return pages ? pages : 1U;
+}
 
 static void print_area_font(UI *ui, const char *text, unsigned int x,
                             unsigned int y, unsigned int width,
@@ -659,10 +689,27 @@ static void draw_triangle(UI *ui, unsigned int center_x, unsigned int center_y,
 }
 
 static void breadcrumb(UI *ui, char *buffer, size_t size) {
-  snprintf(buffer, size, "%s • %s%s/", kual_privilege_indicator(geteuid() == 0),
-           ui->breadcrumb_status, *ui->breadcrumb_status ? " | " : "");
-  for (size_t i = 1; i <= ui->depth; i++) {
-    size_t used = strlen(buffer);
+  snprintf(buffer, size, "%s • ", kual_privilege_mode_indicator(ui->privilege));
+  size_t used = strlen(buffer);
+  if (*ui->breadcrumb_status) {
+    snprintf(buffer + used, size - used, "%s | ", ui->breadcrumb_status);
+  } else if (!ui->show_status) {
+    KualEntry *menu = current_menu(ui);
+    size_t pages = menu_page_count(ui, menu);
+    if (pages > 1U) {
+      size_t first = current_page(ui) * ui->page_rows;
+      size_t end = first + ui->page_rows;
+      size_t total = menu->child_count + 1U;
+      if (end > total)
+        end = total;
+      snprintf(buffer + used, size - used, "%zu-%zu/%zu | ", first + 1U, end,
+               total);
+    }
+  }
+  used = strlen(buffer);
+  snprintf(buffer + used, size - used, "/");
+  for (size_t i = 1; i <= ui->navigation.depth; i++) {
+    used = strlen(buffer);
     if (used + 5U >= size)
       break;
     snprintf(buffer + used, size - used, " • %s", ui->nav[i]->name);
@@ -683,9 +730,11 @@ static void ui_draw(UI *ui) {
   if (radius < 8U)
     radius = 8U;
   size_t total = menu->child_count + 1U;
-  size_t first = ui->page * KUAL_PAGE_ROWS;
-  size_t pages = (total + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
-  bool up_enabled = ui->depth > 0U;
+  size_t pages = menu_page_count(ui, menu);
+  if (current_page(ui) >= pages)
+    ui->navigation.page[ui->navigation.depth] = pages - 1U;
+  size_t first = current_page(ui) * ui->page_rows;
+  bool up_enabled = ui->navigation.depth > 0U;
   bool next_enabled = pages > 1U;
   rounded_outline(ui, outer_x, ui->list_y, ui->side_w, ui->list_h, radius, 1U,
                   up_enabled ? 55U : 170U);
@@ -697,17 +746,17 @@ static void ui_draw(UI *ui) {
   print_area(ui, trail, outer_x, 0U, ui->state.view_width - 2U * outer_x,
              ui->top_h, ui->chrome_text_size, false);
 
-  bool final_page = ui->page + 1U == pages;
-  for (size_t row = 0; row < KUAL_PAGE_ROWS; row++) {
+  bool final_page = current_page(ui) + 1U == pages;
+  for (size_t row = 0; row < ui->page_rows; row++) {
     size_t index = first + row;
-    bool special = final_page && row == KUAL_PAGE_ROWS - 1U;
+    bool special = final_page && row == ui->page_rows - 1U;
     if (index >= menu->child_count && !special)
       continue;
     unsigned int y = ui->list_y + (unsigned int)row * (ui->button_h + ui->gap);
     rounded_outline(ui, ui->button_x, y, ui->button_w, ui->button_h, radius, 1U,
                     55U);
     if (special) {
-      const char *label = ui->depth ? "/" : "× Quit";
+      const char *label = ui->navigation.depth ? "/" : "× Quit";
       print_area(ui, label, ui->button_x + ui->gap, y,
                  ui->button_w - 2U * ui->gap, ui->button_h,
                  ui->state.view_width / 30U, true);
@@ -724,20 +773,22 @@ static void ui_draw(UI *ui) {
   draw_triangle(ui, right_x + ui->side_w / 2U, ui->list_y + ui->list_h / 2U,
                 false, next_enabled ? 0U : 165U);
 
-  char footer[512];
-  if (*ui->status)
-    snprintf(footer, sizeof(footer), "%s", ui->status);
-  else {
-    size_t end = first + KUAL_PAGE_ROWS;
-    if (end > total)
-      end = total;
-    snprintf(footer, sizeof(footer),
-             "Entries %zu - %zu of %zu • KUAL Next %s • %s", first + 1U, end,
-             total, KUAL_NEXT_VERSION, ui->state.device_name);
+  if (ui->show_status) {
+    char footer[512];
+    if (*ui->status)
+      snprintf(footer, sizeof(footer), "%s", ui->status);
+    else {
+      size_t end = first + ui->page_rows;
+      if (end > total)
+        end = total;
+      snprintf(footer, sizeof(footer),
+               "Entries %zu - %zu of %zu • KUAL Next %s • %s", first + 1U, end,
+               total, KUAL_NEXT_VERSION, ui->state.device_name);
+    }
+    print_area(ui, footer, outer_x, ui->state.view_height - ui->status_h,
+               ui->state.view_width - 2U * outer_x, ui->status_h,
+               ui->chrome_text_size, false);
   }
-  print_area(ui, footer, outer_x, ui->state.view_height - ui->status_h,
-             ui->state.view_width - 2U * outer_x, ui->status_h,
-             ui->chrome_text_size, false);
   FBInkConfig refresh = ui->draw_cfg;
   refresh.no_refresh = false;
   refresh.wfm_mode = WFM_GC16;
@@ -912,21 +963,20 @@ static TapResult map_tap(UI *ui, int x, int y) {
   if (y < (int)ui->list_y || y >= (int)(ui->list_y + ui->list_h))
     return (TapResult){TAP_NONE, NULL};
   if (x < (int)ui->button_x)
-    return (TapResult){ui->depth ? TAP_BACK : TAP_NONE, NULL};
+    return (TapResult){ui->navigation.depth ? TAP_BACK : TAP_NONE, NULL};
   if (x >= (int)(ui->button_x + ui->button_w))
     return (TapResult){TAP_NEXT, NULL};
   size_t row = (size_t)(y - (int)ui->list_y) / (ui->button_h + ui->gap);
   unsigned int row_y =
       ui->list_y + (unsigned int)row * (ui->button_h + ui->gap);
-  if (row >= KUAL_PAGE_ROWS || y >= (int)(row_y + ui->button_h))
+  if (row >= ui->page_rows || y >= (int)(row_y + ui->button_h))
     return (TapResult){TAP_NONE, NULL};
-  size_t index = ui->page * KUAL_PAGE_ROWS + row;
+  size_t index = current_page(ui) * ui->page_rows + row;
   if (index < menu->child_count)
     return (TapResult){TAP_ENTRY, &menu->children[index]};
-  size_t pages =
-      (menu->child_count + 1U + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
-  if (ui->page + 1U == pages && row == KUAL_PAGE_ROWS - 1U)
-    return (TapResult){ui->depth ? TAP_TOP : TAP_CLOSE, NULL};
+  size_t pages = menu_page_count(ui, menu);
+  if (current_page(ui) + 1U == pages && row == ui->page_rows - 1U)
+    return (TapResult){ui->navigation.depth ? TAP_TOP : TAP_CLOSE, NULL};
   return (TapResult){TAP_NONE, NULL};
 }
 
@@ -940,19 +990,27 @@ static char *action_command(const KualEntry *entry) {
   return command;
 }
 
+static void set_status(UI *ui, const char *message) {
+  kual_route_status(ui->show_status, ui->status, sizeof(ui->status),
+                    ui->breadcrumb_status, sizeof(ui->breadcrumb_status),
+                    message);
+}
+
 static void internal_message(UI *ui, const KualEntry *entry) {
   if (entry->internal_kind == KUAL_INTERNAL_BREADCRUMB)
     snprintf(ui->breadcrumb_status, sizeof(ui->breadcrumb_status), "%s",
              entry->internal);
   else if (entry->internal_kind == KUAL_INTERNAL_STATUS)
-    snprintf(ui->status, sizeof(ui->status), "%s", entry->internal);
+    set_status(ui, entry->internal);
 }
 
 static void show_current_date(UI *ui) {
   time_t now = time(NULL);
   struct tm local;
+  char formatted[64];
   localtime_r(&now, &local);
-  strftime(ui->status, sizeof(ui->status), "%Y-%m-%d %H:%M:%S", &local);
+  strftime(formatted, sizeof(formatted), "%Y-%m-%d %H:%M:%S", &local);
+  set_status(ui, formatted);
 }
 
 static int notify_document_indexer(void) {
@@ -975,8 +1033,10 @@ static int run_builtin(UI *ui, KualMenu *menu, KualEntry *entry) {
         entry->builtin_action == KUAL_BUILTIN_SORT_ABC ? "ABC" : "123";
     if (kual_set_sort_mode(menu->extensions_dir, mode) != 0) {
       int saved = errno;
-      snprintf(ui->status, sizeof(ui->status), "Cannot set sort mode: %s",
+      char message[256];
+      snprintf(message, sizeof(message), "Cannot set sort mode: %s",
                strerror(saved));
+      set_status(ui, message);
       kual_log("cannot set KUAL sort mode to %s: %s", mode, strerror(saved));
       return 0;
     }
@@ -988,8 +1048,10 @@ static int run_builtin(UI *ui, KualMenu *menu, KualEntry *entry) {
     if (kual_archive_log(KUAL_DEFAULT_LOG, KUAL_DEFAULT_DOCUMENTS, time(NULL),
                          &destination) != 0) {
       int saved = errno;
-      snprintf(ui->status, sizeof(ui->status), "Cannot save log: %s",
+      char message[256];
+      snprintf(message, sizeof(message), "Cannot save log: %s",
                strerror(saved));
+      set_status(ui, message);
       kual_log("cannot archive KUAL log: %s", strerror(saved));
       return 0;
     }
@@ -997,8 +1059,10 @@ static int run_builtin(UI *ui, KualMenu *menu, KualEntry *entry) {
     show_current_date(ui);
     if (notify_document_indexer() != 0) {
       int saved = errno;
-      snprintf(ui->status, sizeof(ui->status),
+      char message[256];
+      snprintf(message, sizeof(message),
                "Log saved; index notification failed: %s", strerror(saved));
+      set_status(ui, message);
       kual_log("cannot launch dbus-send for %s: %s", destination,
                strerror(saved));
     }
@@ -1017,20 +1081,23 @@ static int run_background(UI *ui, KualEntry *entry) {
               strerror(errno));
       _exit(126);
     }
-    execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+    KualExecSpec spec;
+    kual_exec_spec(ui->privilege, command, &spec);
+    execv(spec.path, spec.argv);
     dprintf(STDERR_FILENO, "cannot execute '%s': %s\n", command,
             strerror(errno));
     _exit(127);
   }
   if (pid < 0) {
-    snprintf(ui->status, sizeof(ui->status), "Launch failed: %s",
-             strerror(errno));
+    char message[256];
+    snprintf(message, sizeof(message), "Launch failed: %s", strerror(errno));
+    set_status(ui, message);
     free(command);
     return -1;
   }
   /* Original KUAL applies the action status after any internal message. */
   if (entry->show_status)
-    snprintf(ui->status, sizeof(ui->status), "%s", command);
+    set_status(ui, command);
   free(command);
   if (entry->checked_after)
     entry->checked = true;
@@ -1052,7 +1119,9 @@ static int exec_and_exit(UI *ui, KualEntry *entry) {
     return 126;
   }
   free(cwd);
-  execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+  KualExecSpec spec;
+  kual_exec_spec(ui->privilege, command, &spec);
+  execv(spec.path, spec.argv);
   dprintf(STDERR_FILENO, "cannot execute '%s': %s\n", command, strerror(errno));
   free(command);
   return 127;
@@ -1074,38 +1143,34 @@ static void reload_menu(UI *ui, KualMenu *menu, KualErrors *errors) {
   free(model);
   kual_menu_load(menu, errors);
   kual_menu_add_errors(menu, errors);
-  ui->depth = ui->page = 0;
+  kual_navigation_init(&ui->navigation);
+  ui_apply_menu_config(ui, menu);
   *ui->breadcrumb_status = '\0';
+  *ui->status = '\0';
   ui->nav[0] = &menu->root;
 }
 
 static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors,
                       TapResult tap) {
   KualEntry *current = current_menu(ui);
-  size_t pages =
-      (current->child_count + 1U + KUAL_PAGE_ROWS - 1U) / KUAL_PAGE_ROWS;
-  if (!pages)
-    pages = 1;
+  size_t pages = menu_page_count(ui, current);
   if (tap.action == TAP_CLOSE)
     return 1;
   if (tap.action == TAP_BACK) {
-    if (ui->depth)
-      ui->depth--;
-    ui->page = 0;
+    kual_navigation_back(&ui->navigation);
     *ui->status = '\0';
     *ui->breadcrumb_status = '\0';
   } else if (tap.action == TAP_TOP) {
-    ui->depth = ui->page = 0;
+    kual_navigation_top(&ui->navigation);
     *ui->status = '\0';
     *ui->breadcrumb_status = '\0';
   } else if (tap.action == TAP_NEXT) {
-    ui->page = (ui->page + 1U) % pages;
+    kual_navigation_next_page(&ui->navigation, pages);
     *ui->breadcrumb_status = '\0';
   } else if (tap.action == TAP_ENTRY && tap.entry) {
     if (tap.entry->child_count) {
-      if (ui->depth + 1 < MAX_NAV_DEPTH)
-        ui->nav[++ui->depth] = tap.entry;
-      ui->page = 0;
+      if (kual_navigation_enter(&ui->navigation))
+        ui->nav[ui->navigation.depth] = tap.entry;
       *ui->status = '\0';
       *ui->breadcrumb_status = '\0';
     } else {
@@ -1119,6 +1184,9 @@ static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors,
         if (run_builtin(ui, menu, tap.entry))
           reload_menu(ui, menu, errors);
       } else if (tap.entry->action) {
+        int cleanup = kual_cleanup_known_offenders("/usr/bin/killall");
+        if (cleanup < 0 || cleanup == 127)
+          kual_log("cannot run known-offender cleanup");
         if (tap.entry->exit_menu)
           return exec_and_exit(ui, tap.entry) + 2;
         run_background(ui, tap.entry);
@@ -1203,7 +1271,7 @@ static TapResult process_input(UI *ui, InputDevice *input) {
 
 int kual_ui_run(KualMenu *menu, KualErrors *errors) {
   UI ui;
-  if (ui_init(&ui) != 0) {
+  if (ui_init(&ui, menu) != 0) {
     ui_cleanup(&ui);
     kual_log("failed to initialize FBInk or input");
     return 1;
@@ -1214,6 +1282,7 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
   sigaction(SIGTERM, &action, NULL);
   sigaction(SIGINT, &action, NULL);
   sigaction(SIGQUIT, &action, NULL);
+  kual_navigation_init(&ui.navigation);
   ui.nav[0] = &menu->root;
 
   sleep_ms(500);

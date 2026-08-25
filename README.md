@@ -66,7 +66,7 @@ The launcher scans `/mnt/us/extensions` for `config.xml` files and their JSON
 menus. It supports nested `items`, actions and parameters, priorities, KUAL's
 RPN `if` expressions, `exitmenu`, `checked`, `refresh`, `status`, `date`,
 `hidden`, internal breadcrumb/status messages, collation, and relevant
-`KUAL.cfg` discovery and sorting options.
+`KUAL.cfg` discovery, sorting, page-size, and status-line options.
 
 Non-JSON menus, KUAL's Java mailbox/cache protocol, the old self-management
 menu, TouchRunner output, and pre-hard-float firmware are intentionally out of
@@ -81,7 +81,7 @@ scope.
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
 | Input | Touch, Home/Menu, back, next, and a small set of page-key aliases are supported. KUAL's numeric/QWERTY item shortcuts and Java focus navigation are not. |
-| Configuration | Discovery depth, path exclusion, symlink following, collation, and `ABC`, `ABC!`, and `123` sorting are supported. UI settings such as `KUAL_no_show_status` and the self-management menu are not. |
+| Configuration | Discovery depth, path exclusion, symlink following, collation, `ABC`, `ABC!`, and `123` sorting, `KUAL_page_size`, `KUAL_no_show_status`, and the sort/log/quit self-management entries are supported. Legacy Java font family and style settings are not used because KUAL Next uses bundled Noto fonts. |
 | Parsing | `config.xml` is handled by the small, non-validating yxml parser. XML syntax, nesting, entities, CDATA, and processing instructions are supported; DTD validation and custom entity declarations are not. |
 | Fonts | Bundled Noto fonts cover KUAL's standard indicators and many scripts and symbols, but there is no font fallback; unsupported characters may be rendered as squares. |
 | Devices | Only recent ARM hard-float Kindles running firmware 5.16.3 or newer are targeted. Older ARMEL and keyboard-era devices are unsupported. |
@@ -142,9 +142,10 @@ finished. The status bar is restored and the staged files are removed on exit.
 
 The fixture contains a multi-page test menu and a nested multi-page submenu,
 plus collation, breadcrumb and status messages, checked/date/refresh behaviors,
-and harmless actions that append to `/var/tmp/kual-next-ui-test.log`. Action
-stderr also exercises the normal `/var/tmp/kual-next.log` path. Neither log is
-deleted automatically so it can be inspected after the test.
+configurable page sizing, status-line suppression, and harmless actions that
+append to `/var/tmp/kual-next-ui-test.log`. Action stderr also exercises the
+normal `/var/tmp/kual-next.log` path. Neither log is deleted automatically so
+it can be inspected after the test.
 
 ## Kindle cross-build
 

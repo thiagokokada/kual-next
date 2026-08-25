@@ -3,8 +3,10 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 void kual_config_init(KualConfig *config) {
   memset(config, 0, sizeof(*config));
@@ -98,4 +100,21 @@ int kual_config_load(KualConfig *config, const char *path, KualErrors *errors) {
     result = -1;
   }
   return result;
+}
+
+size_t kual_config_page_size(const KualConfig *config, size_t fallback) {
+  const char *value = kual_config_get(config, "page_size");
+  if (!value || !*value)
+    return fallback;
+  errno = 0;
+  char *end = NULL;
+  unsigned long parsed = strtoul(value, &end, 10);
+  if (errno || !end || *end || !parsed || parsed > SIZE_MAX)
+    return fallback;
+  return (size_t)parsed;
+}
+
+bool kual_config_show_status(const KualConfig *config) {
+  const char *value = kual_config_get(config, "no_show_status");
+  return !value || strcasecmp(value, "true") != 0;
 }
