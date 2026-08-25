@@ -76,7 +76,7 @@ scope.
 
 | Area | Limitation |
 | --- | --- |
-| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. It suppresses the KPP status bar while visible and redraws after screen unlock, but unrelated framework windows may still repaint over it. |
+| Display ownership | KUAL Next renders through FBInk while an input-transparent X11 application window gives Awesome lifecycle and focus ownership. If the local X11 connection or Shape extension is unavailable, it falls back to direct FBInk rendering and unrelated framework windows may repaint over it. |
 | Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
@@ -146,6 +146,24 @@ configurable page sizing, status-line suppression, and harmless actions that
 append to `/var/tmp/kual-next-ui-test.log`. Action stderr also exercises the
 normal `/var/tmp/kual-next.log` path. Neither log is deleted automatically so
 it can be inspected after the test.
+
+### Kindle UI recovery
+
+KUAL Next's ownership window is identified by `ID:kual-next-owner`. To close
+only that X11 client over SSH, run:
+
+```sh
+ssh root@your-kindle 'printf "%s\n" "for _, c in ipairs(client.get()) do if c.name and string.find(c.name, \"ID:kual-next-owner\", 1, true) then c:kill() end end" | DISPLAY=:0.0 /usr/bin/awesome-client'
+```
+
+To terminate a stuck launcher and restore the Kindle status bar, run:
+
+```sh
+ssh root@your-kindle '/usr/bin/killall -TERM kual-next 2>/dev/null || true; sleep 2; /usr/bin/killall -KILL kual-next 2>/dev/null || true; /sbin/start statusbar 2>/dev/null || true'
+```
+
+The launcher normally removes the window itself on every exit path, and its
+scriptlet supervisor restores the status bar after a launcher crash.
 
 ## Kindle cross-build
 

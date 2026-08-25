@@ -50,6 +50,9 @@ typedef struct {
   bool screen_saver_active;
   bool resume_redraw_pending;
   struct timespec resume_redraw_at;
+  bool geometry_redraw_pending;
+  struct timespec geometry_redraw_at;
+  KualX11Owner x11;
   KualEntry *nav[MAX_NAV_DEPTH];
   KualNavigation navigation;
   KualPrivilege privilege;
@@ -226,6 +229,7 @@ static void ui_cleanup(UI *ui) {
     fbink_close(ui->fbfd);
     ui->fbfd = -1;
   }
+  kual_x11_owner_close(&ui->x11);
 }
 
 static bool axis_info(int fd, unsigned int code, int *min, int *max) {
@@ -420,6 +424,7 @@ static bool load_ot_font(const char *path, FBInkOTConfig *config) {
 
 static int ui_init(UI *ui, const KualMenu *menu) {
   memset(ui, 0, sizeof(*ui));
+  kual_x11_owner_init(&ui->x11);
   ui->privilege = kual_privilege_mode(
       geteuid() == 0, access("/var/local/mkk/gandalf", F_OK) == 0);
   ui->fbfd = ui->power_fd = -1;
@@ -453,6 +458,9 @@ static int ui_init(UI *ui, const KualMenu *menu) {
   }
   if (power_events_open(ui) != 0)
     kual_log("cannot monitor Kindle screen-saver events: %s", strerror(errno));
+  if (kual_x11_owner_open(&ui->x11, "/tmp/.X11-unix/X0") != 0)
+    kual_log("cannot create Kindle framework ownership window: %s",
+             strerror(errno));
   return 0;
 }
 
@@ -823,17 +831,46 @@ static void schedule_resume_redraw(UI *ui, long delay_ms) {
   ui->resume_redraw_pending = true;
 }
 
-static int resume_redraw_timeout(const UI *ui) {
-  if (!ui->resume_redraw_pending)
-    return -1;
+static void schedule_geometry_redraw(UI *ui, long delay_ms) {
+  clock_gettime(CLOCK_MONOTONIC, &ui->geometry_redraw_at);
+  ui->geometry_redraw_at.tv_sec += delay_ms / 1000L;
+  ui->geometry_redraw_at.tv_nsec += (delay_ms % 1000L) * 1000000L;
+  if (ui->geometry_redraw_at.tv_nsec >= 1000000000L) {
+    ui->geometry_redraw_at.tv_sec++;
+    ui->geometry_redraw_at.tv_nsec -= 1000000000L;
+  }
+  ui->geometry_redraw_pending = true;
+}
+
+static int deadline_timeout(const struct timespec *deadline) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
-  long seconds = ui->resume_redraw_at.tv_sec - now.tv_sec;
-  long nanoseconds = ui->resume_redraw_at.tv_nsec - now.tv_nsec;
+  long seconds = deadline->tv_sec - now.tv_sec;
+  long nanoseconds = deadline->tv_nsec - now.tv_nsec;
   long milliseconds = seconds * 1000L + nanoseconds / 1000000L;
   if (nanoseconds > 0 && nanoseconds % 1000000L)
     milliseconds++;
   return milliseconds > 0 ? (int)milliseconds : 0;
+}
+
+static int resume_redraw_timeout(const UI *ui) {
+  return ui->resume_redraw_pending ? deadline_timeout(&ui->resume_redraw_at)
+                                   : -1;
+}
+
+static int geometry_redraw_timeout(const UI *ui) {
+  return ui->geometry_redraw_pending ? deadline_timeout(&ui->geometry_redraw_at)
+                                     : -1;
+}
+
+static int ui_poll_timeout(const UI *ui) {
+  int resume = resume_redraw_timeout(ui);
+  int geometry = geometry_redraw_timeout(ui);
+  if (resume < 0)
+    return geometry;
+  if (geometry < 0)
+    return resume;
+  return resume < geometry ? resume : geometry;
 }
 
 static void finish_resume_redraw(UI *ui) {
@@ -845,6 +882,16 @@ static void finish_resume_redraw(UI *ui) {
     ui->screen_saver_active = false;
   else
     schedule_resume_redraw(ui, 1000L);
+}
+
+static void finish_geometry_redraw(UI *ui) {
+  ui->geometry_redraw_pending = false;
+  if (ui->screen_saver_active)
+    return;
+  int result = ui_reinit(ui);
+  if (result < 0)
+    kual_log("FBInk reinit after X11 geometry change failed: %d", result);
+  ui_draw(ui);
 }
 
 static void handle_power_event(UI *ui, const char *line) {
@@ -1285,6 +1332,16 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
   kual_navigation_init(&ui.navigation);
   ui.nav[0] = &menu->root;
 
+  if (ui.x11.fd >= 0) {
+    int mapped = kual_x11_owner_wait_mapped(&ui.x11, 1000);
+    if (mapped < 0) {
+      kual_log("Kindle framework ownership window failed before mapping: %s",
+               strerror(errno));
+      kual_x11_owner_close(&ui.x11);
+    } else if (mapped > 0) {
+      kual_log("timed out waiting for Kindle framework ownership window");
+    }
+  }
   sleep_ms(500);
   int result = ui_reinit(&ui);
   if (result < 0) {
@@ -1293,15 +1350,23 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
   ui_draw(&ui);
 
   while (!stopping) {
-    struct pollfd fds[MAX_INPUTS + 1U];
+    struct pollfd fds[MAX_INPUTS + 2U];
+    size_t fd_count = 0;
     bool monitor_power = ui.power_fd >= 0;
-    size_t input_offset = monitor_power ? 1U : 0U;
-    if (monitor_power)
-      fds[0] = (struct pollfd){ui.power_fd, POLLIN, 0};
+    size_t power_index = SIZE_MAX;
+    if (monitor_power) {
+      power_index = fd_count;
+      fds[fd_count++] = (struct pollfd){ui.power_fd, POLLIN, 0};
+    }
+    size_t x11_index = SIZE_MAX;
+    if (ui.x11.fd >= 0) {
+      x11_index = fd_count;
+      fds[fd_count++] = (struct pollfd){ui.x11.fd, POLLIN, 0};
+    }
+    size_t input_offset = fd_count;
     for (size_t i = 0; i < ui.input_count; i++)
-      fds[input_offset + i] = (struct pollfd){ui.inputs[i].fd, POLLIN, 0};
-    int ready =
-        poll(fds, input_offset + ui.input_count, resume_redraw_timeout(&ui));
+      fds[fd_count++] = (struct pollfd){ui.inputs[i].fd, POLLIN, 0};
+    int ready = poll(fds, fd_count, ui_poll_timeout(&ui));
     if (ready < 0) {
       if (errno == EINTR)
         continue;
@@ -1309,8 +1374,24 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
       ui_cleanup(&ui);
       return 1;
     }
-    if (monitor_power && fds[0].revents & (POLLIN | POLLHUP | POLLERR))
+    if (monitor_power &&
+        fds[power_index].revents & (POLLIN | POLLHUP | POLLERR))
       power_events_read(&ui);
+    if (x11_index != SIZE_MAX && fds[x11_index].revents) {
+      bool geometry_changed = false;
+      bool connection_error =
+          fds[x11_index].revents & (POLLERR | POLLHUP | POLLNVAL);
+      if (connection_error)
+        errno = EPIPE;
+      if (connection_error ||
+          kual_x11_owner_read(&ui.x11, &geometry_changed) != 0) {
+        kual_log("Kindle framework ownership window connection failed: %s",
+                 strerror(errno));
+        kual_x11_owner_close(&ui.x11);
+      } else if (geometry_changed) {
+        schedule_geometry_redraw(&ui, 250L);
+      }
+    }
     bool input_failed = false;
     for (size_t i = 0; i < ui.input_count; i++) {
       short revents = fds[input_offset + i].revents;
@@ -1343,6 +1424,8 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
     }
     if (ui.resume_redraw_pending && resume_redraw_timeout(&ui) == 0)
       finish_resume_redraw(&ui);
+    if (ui.geometry_redraw_pending && geometry_redraw_timeout(&ui) == 0)
+      finish_geometry_redraw(&ui);
   }
   ui_cleanup(&ui);
   return 0;

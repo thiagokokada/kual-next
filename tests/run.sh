@@ -51,7 +51,7 @@ grep -q '^> Zeta Section (Priority -10)$' "$tmpdir/device-tree"
 grep -q '^> Device UI Test$' "$tmpdir/device-tree"
 grep -q '^> Alpha Section (Priority 10)$' "$tmpdir/device-tree"
 grep -q '^  > Collated section+$' "$tmpdir/device-tree"
-test "$(grep -c '^  \(-\|>\) [0-9][0-9] ' "$tmpdir/device-tree")" -eq 15
+test "$(grep -c '^  \(-\|>\) [0-9][0-9] ' "$tmpdir/device-tree")" -eq 16
 test "$(grep -c '^    - Nested [0-9][0-9] =>' "$tmpdir/device-tree")" -eq 12
 grep -q '^> KUAL$' "$tmpdir/device-tree"
 grep -q '  - Sort menu ABC => \[internal:sort-ABC\]$' "$tmpdir/device-tree"

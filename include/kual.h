@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -105,6 +106,25 @@ typedef struct {
   char *argv[7];
 } KualExecSpec;
 
+#define KUAL_X11_BUFFER_SIZE 4096
+
+typedef struct {
+  int fd;
+  uint32_t window;
+  uint32_t root;
+  uint32_t resource_base;
+  uint32_t resource_mask;
+  uint16_t sequence;
+  uint16_t width;
+  uint16_t height;
+  uint8_t shape_opcode;
+  unsigned char buffer[KUAL_X11_BUFFER_SIZE];
+  size_t buffer_len;
+  bool mapped;
+  bool window_created;
+  bool connected;
+} KualX11Owner;
+
 void *kual_xcalloc(size_t count, size_t size);
 void *kual_xrealloc(void *ptr, size_t size);
 char *kual_xstrdup(const char *s);
@@ -123,6 +143,12 @@ void kual_route_status(bool footer_enabled, char *footer, size_t footer_size,
                        char *breadcrumb, size_t breadcrumb_size,
                        const char *message);
 bool kual_power_event_is_unlock(const char *event, bool screen_saver_active);
+void kual_x11_owner_init(KualX11Owner *owner);
+int kual_x11_owner_open(KualX11Owner *owner, const char *socket_path);
+int kual_x11_owner_open_fd(KualX11Owner *owner, int fd);
+int kual_x11_owner_wait_mapped(KualX11Owner *owner, int timeout_ms);
+int kual_x11_owner_read(KualX11Owner *owner, bool *geometry_changed);
+void kual_x11_owner_close(KualX11Owner *owner);
 int kual_set_sort_mode(const char *extensions_dir, const char *mode);
 int kual_archive_log(const char *source, const char *documents_dir, time_t when,
                      char **destination_out);

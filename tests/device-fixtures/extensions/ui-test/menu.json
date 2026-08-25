@@ -82,6 +82,7 @@
         {"name": "12 Page filler", "action": "bin/log-action.sh", "params": "filler-12", "exitmenu": false},
         {"name": "13 Page filler", "action": "bin/log-action.sh", "params": "filler-13", "exitmenu": false},
         {"name": "14 Page filler", "action": "bin/log-action.sh", "params": "filler-14", "exitmenu": false},
+        {"name": "16 Exit-menu cleanup", "action": "bin/log-action.sh", "params": "exitmenu", "exitmenu": true},
         {
           "name": "15 Sort Demo (ABC vs 123 vs ABC!)",
           "items": [

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -320,6 +321,190 @@ static void test_power_event_unlock(void) {
   assert(!kual_power_event_is_unlock(NULL, true));
 }
 
+static uint16_t x11_test_get16(const unsigned char *p) {
+  return (uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8U);
+}
+
+static uint32_t x11_test_get32(const unsigned char *p) {
+  return (uint32_t)p[0] | ((uint32_t)p[1] << 8U) | ((uint32_t)p[2] << 16U) |
+         ((uint32_t)p[3] << 24U);
+}
+
+static void x11_test_put16(unsigned char *p, uint16_t value) {
+  p[0] = (unsigned char)(value & 0xffU);
+  p[1] = (unsigned char)(value >> 8U);
+}
+
+static void x11_test_put32(unsigned char *p, uint32_t value) {
+  p[0] = (unsigned char)(value & 0xffU);
+  p[1] = (unsigned char)((value >> 8U) & 0xffU);
+  p[2] = (unsigned char)((value >> 16U) & 0xffU);
+  p[3] = (unsigned char)(value >> 24U);
+}
+
+static void x11_test_read_all(int fd, void *buffer, size_t size) {
+  unsigned char *p = buffer;
+  while (size) {
+    ssize_t got = read(fd, p, size);
+    assert(got > 0);
+    p += (size_t)got;
+    size -= (size_t)got;
+  }
+}
+
+static void x11_test_write_all(int fd, const void *buffer, size_t size) {
+  const unsigned char *p = buffer;
+  while (size) {
+    ssize_t written = write(fd, p, size);
+    assert(written > 0);
+    p += (size_t)written;
+    size -= (size_t)written;
+  }
+}
+
+static size_t x11_test_read_request(int fd, unsigned char *request,
+                                    size_t capacity) {
+  x11_test_read_all(fd, request, 4U);
+  size_t size = (size_t)x11_test_get16(request + 2U) * 4U;
+  assert(size >= 4U && size <= capacity);
+  x11_test_read_all(fd, request + 4U, size - 4U);
+  return size;
+}
+
+static void x11_test_send_setup(int fd) {
+  unsigned char prefix[8] = {1, 0, 11, 0, 0, 0, 18, 0};
+  unsigned char extra[72] = {0};
+  x11_test_put32(extra + 4U, 0x02000000U);
+  x11_test_put32(extra + 8U, 0x001fffffU);
+  extra[20U] = 1U;
+  x11_test_put32(extra + 32U, 0x00000100U);
+  x11_test_put32(extra + 40U, 0x00ffffffU);
+  x11_test_put16(extra + 52U, 1272U);
+  x11_test_put16(extra + 54U, 1696U);
+  x11_test_write_all(fd, prefix, sizeof(prefix));
+  x11_test_write_all(fd, extra, sizeof(extra));
+}
+
+static void x11_test_server(int fd, bool shape_available) {
+  unsigned char setup[12];
+  x11_test_read_all(fd, setup, sizeof(setup));
+  assert(setup[0] == 'l');
+  assert(x11_test_get16(setup + 2U) == 11U);
+  x11_test_send_setup(fd);
+
+  unsigned char request[256];
+  size_t size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 16U && request[0] == 98U);
+  assert(x11_test_get16(request + 4U) == 5U);
+  assert(!memcmp(request + 8U, "SHAPE", 5U));
+  unsigned char extension_reply[32] = {1, 0, 1, 0};
+  extension_reply[8U] = shape_available ? 1U : 0U;
+  extension_reply[9U] = shape_available ? 130U : 0U;
+  x11_test_write_all(fd, extension_reply, sizeof(extension_reply));
+  if (!shape_available) {
+    close(fd);
+    _exit(0);
+  }
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 4U && request[0] == 130U && request[1] == 0U);
+  unsigned char version_reply[32] = {1, 0, 2, 0};
+  x11_test_put16(version_reply + 8U, 1U);
+  x11_test_put16(version_reply + 10U, 1U);
+  x11_test_write_all(fd, version_reply, sizeof(version_reply));
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 40U && request[0] == 1U);
+  assert(x11_test_get32(request + 4U) == 0x02000001U);
+  assert(x11_test_get32(request + 8U) == 0x00000100U);
+  assert(x11_test_get16(request + 16U) == 1272U);
+  assert(x11_test_get16(request + 18U) == 1696U);
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(request[0] == 18U && x11_test_get32(request + 8U) == 39U);
+  assert(x11_test_get32(request + 20U) ==
+         strlen("L:A_N:application_PC:N_O:UDRL_ID:kual-next-owner"));
+  assert(!memcmp(request + 24U,
+                 "L:A_N:application_PC:N_O:UDRL_ID:kual-next-owner",
+                 strlen("L:A_N:application_PC:N_O:UDRL_ID:kual-next-owner")));
+  assert(size >= 24U);
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(request[0] == 18U && x11_test_get32(request + 8U) == 67U);
+  assert(x11_test_get32(request + 20U) == 19U);
+  assert(!memcmp(request + 24U, "kual-next\0KualNext\0", 19U));
+  assert(size >= 44U);
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 16U && request[0] == 130U && request[1] == 1U);
+  assert(request[4U] == 0U && request[5U] == 2U);
+  assert(x11_test_get32(request + 8U) == 0x02000001U);
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 8U && request[0] == 8U);
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 4U && request[0] == 43U);
+
+  unsigned char map[32] = {19, 0, 7, 0};
+  x11_test_put32(map + 4U, 0x00000100U);
+  x11_test_put32(map + 8U, 0x02000001U);
+  unsigned char focus_reply[32] = {1, 0, 8, 0};
+  x11_test_write_all(fd, map, sizeof(map));
+  x11_test_write_all(fd, focus_reply, sizeof(focus_reply));
+
+  unsigned char configure[32] = {22, 0, 9, 0};
+  x11_test_put32(configure + 4U, 0x00000100U);
+  x11_test_put32(configure + 8U, 0x02000001U);
+  x11_test_put16(configure + 20U, 1696U);
+  x11_test_put16(configure + 22U, 1272U);
+  x11_test_write_all(fd, configure, sizeof(configure));
+
+  size = x11_test_read_request(fd, request, sizeof(request));
+  assert(size == 8U && request[0] == 4U);
+  assert(x11_test_get32(request + 4U) == 0x02000001U);
+  close(fd);
+  _exit(0);
+}
+
+static void test_x11_owner(void) {
+  int sockets[2];
+  assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+  pid_t pid = fork();
+  assert(pid >= 0);
+  if (pid == 0) {
+    close(sockets[0]);
+    x11_test_server(sockets[1], true);
+  }
+  close(sockets[1]);
+  KualX11Owner owner;
+  assert(kual_x11_owner_open_fd(&owner, sockets[0]) == 0);
+  assert(owner.mapped);
+  assert(owner.width == 1272U && owner.height == 1696U);
+  bool geometry_changed = false;
+  assert(kual_x11_owner_read(&owner, &geometry_changed) == 0);
+  assert(geometry_changed);
+  assert(owner.width == 1696U && owner.height == 1272U);
+  kual_x11_owner_close(&owner);
+  int status;
+  assert(waitpid(pid, &status, 0) == pid);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
+  assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+  pid = fork();
+  assert(pid >= 0);
+  if (pid == 0) {
+    close(sockets[0]);
+    x11_test_server(sockets[1], false);
+  }
+  close(sockets[1]);
+  errno = 0;
+  assert(kual_x11_owner_open_fd(&owner, sockets[0]) == -1);
+  assert(errno == ENOTSUP);
+  kual_x11_owner_close(&owner);
+  assert(waitpid(pid, &status, 0) == pid);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
 int main(int argc, char **argv) {
   assert(argc == 2);
   test_stderr_redirect();
@@ -330,6 +515,7 @@ int main(int argc, char **argv) {
   test_status_routing();
   test_navigation();
   test_power_event_unlock();
+  test_x11_owner();
   test_sort_mode_update();
   test_log_archive();
   KualMenu menu;

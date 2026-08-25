@@ -111,9 +111,16 @@ applications launched from the menu and could leave a blank screen after
 KOReader exited. Continue listening for Kindle screen-saver events, releasing
 input grabs while locked, and issuing a deferred full redraw after unlock.
 
-An Awesome-managed X11 ownership window has been considered but is explicitly
-deferred. Do not introduce X11 ownership or framework lifecycle management
-without a new user decision and an on-device recovery plan.
+KUAL Next may register one non-painting, input-transparent application window
+with the local Awesome/X11 framework while FBInk remains responsible for all
+rendering and evdev remains responsible for input. Keep that ownership client
+inside the statically linked launcher, remove it before every handoff or exit,
+and fall back to FBInk-only behavior if X11 ownership is unavailable. Do not
+modify Amazon's Awesome configuration or extend ownership to framework input.
+
+The ownership window is identified by `ID:kual-next-owner`. It can be closed
+over SSH with Awesome's `c:kill()` API; terminating `kual-next` also closes its
+X11 connection. `/sbin/start statusbar` remains the on-device recovery command.
 
 ## Packaging and commits
 
