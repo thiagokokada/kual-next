@@ -49,17 +49,7 @@ function KUALNext:addToMainMenu(menu_items)
     }
 end
 
-function KUALNext:_launch()
-    local checked, available = pcall(os.execute, SH_INTEGRATION_CHECK)
-    if not checked or (available ~= 0 and available ~= true) then
-        logger.warn("KUAL Next: SH Integration is not installed", available)
-        UIManager:show(InfoMessage:new{
-            icon = "notice-warning",
-            text = _("KUAL Next requires SH Integration on Kindle."),
-        })
-        return
-    end
-
+function KUALNext:_scheduleLaunch()
     logger.info("KUAL Next: scheduling scriptlet after KOReader exits")
     local executed, status = pcall(os.execute, LAUNCH_COMMAND)
     if not executed or (status ~= 0 and status ~= true) then
@@ -73,6 +63,25 @@ function KUALNext:_launch()
 
     UIManager:broadcastEvent(Event:new("Close"))
     UIManager:quit(86)
+end
+
+function KUALNext:_launch()
+    local checked, available = pcall(os.execute, SH_INTEGRATION_CHECK)
+    if not checked or (available ~= 0 and available ~= true) then
+        logger.warn("KUAL Next: SH Integration is not installed", available)
+        UIManager:show(InfoMessage:new{
+            icon = "notice-warning",
+            text = _("KUAL Next requires SH Integration on Kindle."),
+        })
+        return
+    end
+
+    UIManager:show(InfoMessage:new{
+        text = _("KUAL Next is starting."),
+    })
+    UIManager:tickAfterNext(function()
+        self:_scheduleLaunch()
+    end)
 end
 
 function KUALNext:onOpenKUALNext()
