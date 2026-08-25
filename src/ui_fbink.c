@@ -918,7 +918,7 @@ static void handle_power_event(UI *ui, const char *line) {
   }
 }
 
-static void power_events_read(UI *ui) {
+static bool power_events_read(UI *ui) {
   char chunk[256];
   ssize_t got;
   while ((got = read(ui->power_fd, chunk, sizeof(chunk))) > 0) {
@@ -951,6 +951,13 @@ static void power_events_read(UI *ui) {
     kual_log("cannot read Kindle screen-saver events: %s", strerror(errno));
     power_events_close(ui);
   }
+  if (ui->power_fd >= 0)
+    return true;
+  ui->resume_redraw_pending = false;
+  if (!framework_restore_if_owned(true))
+    kual_log("failed to restore Kindle framework after screen-saver event "
+             "monitor loss");
+  return false;
 }
 
 static void tap_feedback(UI *ui, unsigned int y) {
@@ -1372,8 +1379,11 @@ int kual_ui_run(KualMenu *menu, KualErrors *errors) {
       ui_cleanup(&ui);
       return 1;
     }
-    if (monitor_power && fds[0].revents & (POLLIN | POLLHUP | POLLERR))
-      power_events_read(&ui);
+    if (monitor_power && fds[0].revents & (POLLIN | POLLHUP | POLLERR) &&
+        !power_events_read(&ui)) {
+      ui_cleanup(&ui);
+      return 1;
+    }
     bool input_failed = false;
     for (size_t i = 0; i < ui.input_count; i++) {
       short revents = fds[input_offset + i].revents;
