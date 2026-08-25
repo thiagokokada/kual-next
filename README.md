@@ -76,7 +76,7 @@ scope.
 
 | Area | Limitation |
 | --- | --- |
-| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. It suppresses the KPP status bar while visible and redraws after screen unlock, but unrelated framework windows may still repaint over it. |
+| Display ownership | KUAL Next draws directly through FBInk and is not registered as a Kindle framework window. While visible it suppresses Pillow and the KPP status bar and pauses Awesome; it restores the framework for screen lock, application handoff, and exit. |
 | Legacy extensions | Only `config.xml` files referencing JSON menus are supported. Non-JSON menus and extensions requiring Java, Kindlet, or Booklet APIs do not work. |
 | Dynamic menus | Menus are loaded at startup and after an item with `"refresh": true`; KUAL's cache and mailbox protocol for live menu updates is not implemented. |
 | Command output | Action stderr is appended to `/var/tmp/kual-next.log`, but output is not presented in the launcher. TouchRunner-style output, progress displays, cancellation, and interactive terminal handling are unavailable. |
@@ -138,7 +138,8 @@ Optional SSH client flags can be supplied separately, for example
 The target stages the current device binary and test extensions under
 `/tmp/kual-next-ui-test`, then opens KUAL Next with that isolated extension
 tree. Keep the SSH command attached while testing and quit the launcher when
-finished. The status bar is restored and the staged files are removed on exit.
+finished. Awesome, Pillow, and the status bar are restored and the staged files
+are removed on exit.
 
 The fixture contains a multi-page test menu and a nested multi-page submenu,
 plus collation, breadcrumb and status messages, checked/date/refresh behaviors,
@@ -146,6 +147,15 @@ configurable page sizing, status-line suppression, and harmless actions that
 append to `/var/tmp/kual-next-ui-test.log`. Action stderr also exercises the
 normal `/var/tmp/kual-next.log` path. Neither log is deleted automatically so
 it can be inspected after the test.
+
+If the launcher or its scriptlet supervisor is forcibly terminated while the
+framework is suppressed, recover the stock UI over SSH with:
+
+```sh
+/usr/bin/killall -CONT awesome
+lipc-set-prop com.lab126.pillow disableEnablePillow enable
+/sbin/start statusbar
+```
 
 ## Kindle cross-build
 

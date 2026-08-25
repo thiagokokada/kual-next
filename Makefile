@@ -20,6 +20,8 @@ TEST_SOURCES := $(CORE_SOURCES) third_party/yxml.c tests/unit.c
 TEST_BINARY := $(BUILD_DIR)/host/$(PROJECT)-tests
 SANITIZER_BINARY := $(BUILD_DIR)/host/$(PROJECT)-tests-sanitized
 FORMAT_SOURCES := $(wildcard src/*.c include/*.h tests/*.c)
+SHELL_DIRS := assets scripts tests
+SHFMT_FLAGS := -ln posix -i 0 -ci
 
 FBINK_DIR := $(CURDIR)/third_party/FBInk
 FBINK_LIB := $(FBINK_DIR)/Release/libfbink.a
@@ -39,7 +41,7 @@ DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
 KOREADER_PLUGIN := assets/koreader/kualnext.koplugin
 
-.PHONY: all host format-check test sanitize toolchain kindle check package deploy device-ui-test clean
+.PHONY: all host format-check shell-format shell-format-check shellcheck test sanitize toolchain kindle check package deploy device-ui-test clean
 all: host
 
 host: $(HOST_BINARY)
@@ -62,7 +64,16 @@ sanitize: $(SANITIZER_BINARY)
 format-check:
 	clang-format --dry-run --Werror $(FORMAT_SOURCES)
 
-test: format-check $(HOST_BINARY) $(TEST_BINARY) sanitize
+shell-format:
+	find $(SHELL_DIRS) -type f -name '*.sh' -exec shfmt -w $(SHFMT_FLAGS) {} +
+
+shell-format-check:
+	find $(SHELL_DIRS) -type f -name '*.sh' -exec shfmt -d $(SHFMT_FLAGS) {} +
+
+shellcheck:
+	find $(SHELL_DIRS) -type f -name '*.sh' -exec shellcheck --shell=sh {} +
+
+test: format-check shell-format-check shellcheck $(HOST_BINARY) $(TEST_BINARY) sanitize
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	$(TEST_BINARY) tests/fixtures/extensions
 	sh ./tests/check-fonts.sh

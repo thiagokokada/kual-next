@@ -3,10 +3,10 @@
 set -eu
 
 contains() {
-    font=$1
-    shift
-    charset=$(fc-query --format='%{charset}' "$font")
-    perl -e '
+	font=$1
+	shift
+	charset=$(fc-query --format='%{charset}' "$font")
+	perl -e '
         my ($ranges, @wanted) = @ARGV;
         my @ranges = map {
             my ($lo, $hi) = split /-/, $_, 2;

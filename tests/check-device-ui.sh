@@ -2,7 +2,7 @@
 
 set -eu
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 
@@ -40,9 +40,9 @@ cp "$1" "$DEVICE_UI_TEST_UPLOAD"
 MOCK
 chmod 755 "$mock_ssh" "$mock_scp"
 
-export DEVICE_UI_TEST_UPLOAD=$tmpdir/upload.zip
-export DEVICE_UI_TEST_MANIFEST=$tmpdir/manifest
-export DEVICE_UI_TEST_REMOTE_SCRIPT=$tmpdir/remote-script
+export DEVICE_UI_TEST_UPLOAD="$tmpdir/upload.zip"
+export DEVICE_UI_TEST_MANIFEST="$tmpdir/manifest"
+export DEVICE_UI_TEST_REMOTE_SCRIPT="$tmpdir/remote-script"
 
 KUAL_TEST_BINARY="$binary" SSH="$mock_ssh" SCP="$mock_scp" \
 	sh "$root/scripts/test-kindle-ui.sh" test@kindle \
@@ -54,16 +54,19 @@ grep -q 'kual-next-ui-test/extensions/ui-test/menu.json' \
 	"$DEVICE_UI_TEST_MANIFEST"
 grep -q 'kual-next-ui-test/extensions/ui-test/bin/log-action.sh' \
 	"$DEVICE_UI_TEST_MANIFEST"
+# These assertions intentionally match the literal remote-shell variables.
+# shellcheck disable=SC2016
 grep -q 'KUAL_NEXT_BINARY="$root/bin/kual-next"' \
 	"$DEVICE_UI_TEST_REMOTE_SCRIPT"
+# shellcheck disable=SC2016
 grep -q 'KUAL_NEXT_EXTENSIONS="$root/extensions"' \
 	"$DEVICE_UI_TEST_REMOTE_SCRIPT"
 grep -q '^Temporary KUAL Next UI test finished' "$tmpdir/out"
 
 export DEVICE_UI_TEST_RUNNING=123
 if KUAL_TEST_BINARY="$binary" SSH="$mock_ssh" SCP="$mock_scp" \
-		sh "$root/scripts/test-kindle-ui.sh" test@kindle \
-		>"$tmpdir/out" 2>"$tmpdir/error"; then
+	sh "$root/scripts/test-kindle-ui.sh" test@kindle \
+	>"$tmpdir/out" 2>"$tmpdir/error"; then
 	echo "device UI test accepted a running launcher" >&2
 	exit 1
 fi
