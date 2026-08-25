@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -189,6 +190,61 @@ static void test_stderr_redirect(void) {
 static void test_privilege_indicator(void) {
   assert(!strcmp(kual_privilege_indicator(true), "#"));
   assert(!strcmp(kual_privilege_indicator(false), "%"));
+
+  assert(kual_privilege_mode(true, false) == KUAL_PRIVILEGE_ROOT);
+  assert(kual_privilege_mode(true, true) == KUAL_PRIVILEGE_ROOT);
+  assert(kual_privilege_mode(false, true) == KUAL_PRIVILEGE_GANDALF);
+  assert(kual_privilege_mode(false, false) == KUAL_PRIVILEGE_USER);
+  assert(!strcmp(kual_privilege_mode_indicator(KUAL_PRIVILEGE_ROOT), "#"));
+  assert(!strcmp(kual_privilege_mode_indicator(KUAL_PRIVILEGE_GANDALF), "$"));
+  assert(!strcmp(kual_privilege_mode_indicator(KUAL_PRIVILEGE_USER), "%"));
+}
+
+static void test_exec_spec(void) {
+  KualExecSpec spec;
+  kual_exec_spec(KUAL_PRIVILEGE_USER, "echo user", &spec);
+  assert(!strcmp(spec.path, "/bin/sh"));
+  assert(!strcmp(spec.argv[0], "sh"));
+  assert(!strcmp(spec.argv[1], "-c"));
+  assert(!strcmp(spec.argv[2], "echo user"));
+  assert(!spec.argv[3]);
+
+  kual_exec_spec(KUAL_PRIVILEGE_ROOT, "echo root", &spec);
+  assert(!strcmp(spec.path, "/bin/sh"));
+  assert(!strcmp(spec.argv[2], "echo root"));
+
+  kual_exec_spec(KUAL_PRIVILEGE_GANDALF, "echo gandalf", &spec);
+  assert(!strcmp(spec.path, "/var/local/mkk/su"));
+  assert(!strcmp(spec.argv[0], "su"));
+  assert(!strcmp(spec.argv[1], "-s"));
+  assert(!strcmp(spec.argv[2], "/bin/ash"));
+  assert(!strcmp(spec.argv[3], "-c"));
+  assert(!strcmp(spec.argv[4], "echo gandalf"));
+  assert(!spec.argv[5]);
+}
+
+static void test_known_offender_cleanup(void) {
+  char script[] = "/tmp/kual-next-killall.XXXXXX";
+  int fd = mkstemp(script);
+  assert(fd >= 0);
+  close(fd);
+  write_text(script, "#!/bin/sh\nprintf '%s\\n' \"$@\" "
+                     ">\"$KUAL_TEST_KILLALL_ARGS\"\n");
+  assert(chmod(script, 0700) == 0);
+
+  char output[] = "/tmp/kual-next-killall-args.XXXXXX";
+  fd = mkstemp(output);
+  assert(fd >= 0);
+  close(fd);
+  assert(setenv("KUAL_TEST_KILLALL_ARGS", output, 1) == 0);
+  assert(kual_cleanup_known_offenders(script) == 0);
+  assert_text(output, "matchbox-keyboard\nkterm\nskipstone\ncr3\n");
+  assert(kual_cleanup_known_offenders(NULL) == -1);
+  assert(errno == EINVAL);
+
+  unsetenv("KUAL_TEST_KILLALL_ARGS");
+  assert(unlink(output) == 0);
+  assert(unlink(script) == 0);
 }
 
 static void test_ui_config(void) {
@@ -268,6 +324,8 @@ int main(int argc, char **argv) {
   assert(argc == 2);
   test_stderr_redirect();
   test_privilege_indicator();
+  test_exec_spec();
+  test_known_offender_cleanup();
   test_ui_config();
   test_status_routing();
   test_navigation();

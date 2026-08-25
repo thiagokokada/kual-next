@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 void *kual_xcalloc(size_t count, size_t size) {
@@ -132,6 +133,66 @@ int kual_redirect_stderr(const char *path) {
 
 const char *kual_privilege_indicator(bool is_root) {
   return is_root ? "#" : "%";
+}
+
+KualPrivilege kual_privilege_mode(bool is_root, bool gandalf_available) {
+  if (is_root)
+    return KUAL_PRIVILEGE_ROOT;
+  return gandalf_available ? KUAL_PRIVILEGE_GANDALF : KUAL_PRIVILEGE_USER;
+}
+
+const char *kual_privilege_mode_indicator(KualPrivilege privilege) {
+  if (privilege == KUAL_PRIVILEGE_ROOT)
+    return "#";
+  if (privilege == KUAL_PRIVILEGE_GANDALF)
+    return "$";
+  return "%";
+}
+
+void kual_exec_spec(KualPrivilege privilege, const char *command,
+                    KualExecSpec *spec) {
+  memset(spec, 0, sizeof(*spec));
+  if (privilege == KUAL_PRIVILEGE_GANDALF) {
+    spec->path = "/var/local/mkk/su";
+    spec->argv[0] = "su";
+    spec->argv[1] = "-s";
+    spec->argv[2] = "/bin/ash";
+    spec->argv[3] = "-c";
+    spec->argv[4] = (char *)command;
+  } else {
+    spec->path = "/bin/sh";
+    spec->argv[0] = "sh";
+    spec->argv[1] = "-c";
+    spec->argv[2] = (char *)command;
+  }
+}
+
+int kual_cleanup_known_offenders(const char *killall_path) {
+  if (!killall_path || !*killall_path) {
+    errno = EINVAL;
+    return -1;
+  }
+  pid_t pid = fork();
+  if (pid == 0) {
+    int nullfd = open("/dev/null", O_RDWR);
+    if (nullfd >= 0) {
+      dup2(nullfd, STDOUT_FILENO);
+      dup2(nullfd, STDERR_FILENO);
+      if (nullfd > STDERR_FILENO)
+        close(nullfd);
+    }
+    execl(killall_path, killall_path, "matchbox-keyboard", "kterm", "skipstone",
+          "cr3", (char *)NULL);
+    _exit(127);
+  }
+  if (pid < 0)
+    return -1;
+  int status;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno != EINTR)
+      return -1;
+  }
+  return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 void kual_route_status(bool footer_enabled, char *footer, size_t footer_size,

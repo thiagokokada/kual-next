@@ -52,6 +52,7 @@ typedef struct {
   struct timespec resume_redraw_at;
   KualEntry *nav[MAX_NAV_DEPTH];
   KualNavigation navigation;
+  KualPrivilege privilege;
   size_t configured_page_rows;
   size_t page_rows;
   bool show_status;
@@ -419,6 +420,8 @@ static bool load_ot_font(const char *path, FBInkOTConfig *config) {
 
 static int ui_init(UI *ui, const KualMenu *menu) {
   memset(ui, 0, sizeof(*ui));
+  ui->privilege = kual_privilege_mode(
+      geteuid() == 0, access("/var/local/mkk/gandalf", F_OK) == 0);
   ui->fbfd = ui->power_fd = -1;
   ui->draw_cfg.is_quiet = true;
   ui->draw_cfg.fontmult = 3;
@@ -686,7 +689,7 @@ static void draw_triangle(UI *ui, unsigned int center_x, unsigned int center_y,
 }
 
 static void breadcrumb(UI *ui, char *buffer, size_t size) {
-  snprintf(buffer, size, "%s • ", kual_privilege_indicator(geteuid() == 0));
+  snprintf(buffer, size, "%s • ", kual_privilege_mode_indicator(ui->privilege));
   size_t used = strlen(buffer);
   if (*ui->breadcrumb_status) {
     snprintf(buffer + used, size - used, "%s | ", ui->breadcrumb_status);
@@ -1078,7 +1081,9 @@ static int run_background(UI *ui, KualEntry *entry) {
               strerror(errno));
       _exit(126);
     }
-    execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+    KualExecSpec spec;
+    kual_exec_spec(ui->privilege, command, &spec);
+    execv(spec.path, spec.argv);
     dprintf(STDERR_FILENO, "cannot execute '%s': %s\n", command,
             strerror(errno));
     _exit(127);
@@ -1114,7 +1119,9 @@ static int exec_and_exit(UI *ui, KualEntry *entry) {
     return 126;
   }
   free(cwd);
-  execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+  KualExecSpec spec;
+  kual_exec_spec(ui->privilege, command, &spec);
+  execv(spec.path, spec.argv);
   dprintf(STDERR_FILENO, "cannot execute '%s': %s\n", command, strerror(errno));
   free(command);
   return 127;
@@ -1177,6 +1184,9 @@ static int handle_tap(UI *ui, KualMenu *menu, KualErrors *errors,
         if (run_builtin(ui, menu, tap.entry))
           reload_menu(ui, menu, errors);
       } else if (tap.entry->action) {
+        int cleanup = kual_cleanup_known_offenders("/usr/bin/killall");
+        if (cleanup < 0 || cleanup == 127)
+          kual_log("cannot run known-offender cleanup");
         if (tap.entry->exit_menu)
           return exec_and_exit(ui, tap.entry) + 2;
         run_background(ui, tap.entry);
