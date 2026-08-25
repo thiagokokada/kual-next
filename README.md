@@ -27,30 +27,38 @@ device is ready.
    named **Source code**.
 3. Connect your Kindle to your computer with a USB cable and open the Kindle
    drive.
-4. Unzip the downloaded file on your computer. Copy both the `documents` and
-   `kual-next` folders to the top level of the Kindle drive—the same place
-   where the existing `documents` folder is located. If your computer asks,
-   choose to merge the `documents` folders and replace existing KUAL Next
-   files. Do not delete your other documents.
+4. Unzip the downloaded file on your computer. Copy the `documents`,
+   `kual-next`, and `koreader` folders to the top level of the Kindle drive—the
+   same place where the existing `documents` and `koreader` (_optional_, for
+   KOReader integration) folders are located. If your computer asks, choose to
+   merge the folders and replace existing KUAL Next files. Do not delete your
+   other documents or KOReader files.
 5. Check that the files are not inside an extra folder. The Kindle drive should
    contain these paths:
 
    ```text
    documents/KUAL Next.sh
    kual-next/bin/kual-next
+   koreader/plugins/kualnext.koplugin/main.lua
    ```
 
-6. Safely eject the Kindle, unplug the USB cable, and wait for its library to
-   refresh.
-7. Find **KUAL Next** in the Kindle library and tap it to open the launcher.
-   Existing compatible extensions in the Kindle's `extensions` folder should
-   appear automatically.
+6. Safely eject the Kindle and unplug the USB cable.
+7. To launch from the Kindle library, wait for it to refresh, find **KUAL
+   Next**, and tap it. Existing compatible extensions in the Kindle's
+   `extensions` folder should appear automatically.
+
+If KOReader is installed, restart it after installing KUAL Next. You can then
+open the launcher from **Tools → More tools → KUAL Next** or assign the
+**Open KUAL Next** action to a gesture. KOReader closes before opening the
+launcher through SH Integration, then starts again after the launcher or an
+`exitmenu` application closes.
 
 ### Updating
 
 Close KUAL Next, download the new `kual-next-<version>-kindlehf.zip`, and repeat
 the copy steps above. Allow your computer to replace the existing KUAL Next
-files. Your installed extensions are stored separately and will not be removed.
+files, then restart KOReader if it is installed. Your installed extensions are
+stored separately and will not be removed.
 
 ## Supported extension contract
 

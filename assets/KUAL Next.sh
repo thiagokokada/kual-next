@@ -9,6 +9,8 @@ set -u
 log=/var/tmp/kual-next.log
 launcher=${KUAL_NEXT_BINARY:-/mnt/us/kual-next/bin/kual-next}
 extensions=${KUAL_NEXT_EXTENSIONS:-}
+return_marker=/var/tmp/kual-next-return-to-koreader
+return_to_koreader=0
 statusbar_owned=0
 child_pid=
 
@@ -39,6 +41,11 @@ terminate_child() {
 trap terminate_child HUP INT TERM
 trap restore_statusbar EXIT
 
+if [ -f "$return_marker" ]; then
+	rm -f "$return_marker"
+	return_to_koreader=1
+fi
+
 if [ -f /etc/upstart/statusbar.conf ] && statusbar_running; then
 	if /sbin/stop statusbar >>"$log" 2>&1; then
 		statusbar_owned=1
@@ -66,4 +73,14 @@ child_pid=
 
 restore_statusbar
 trap - EXIT
+
+if [ "$return_to_koreader" -eq 1 ]; then
+	if [ -x /mnt/us/koreader/koreader.sh ]; then
+		log_message "KUAL Next stopped; relaunching KOReader"
+		cd /mnt/us/koreader || exit "$run_status"
+		exec /mnt/us/koreader/koreader.sh --asap
+	fi
+	log_message "cannot relaunch KOReader: launcher is missing"
+fi
+
 exit "$run_status"
