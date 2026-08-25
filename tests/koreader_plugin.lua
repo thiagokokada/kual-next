@@ -46,6 +46,9 @@ package.preload["ui/uimanager"] = function()
         nextTick = function(_, callback)
             scheduled = callback
         end,
+        tickAfterNext = function(_, callback)
+            scheduled = callback
+        end,
         broadcastEvent = function(_, event)
             events[#events + 1] = event
         end,
@@ -112,6 +115,13 @@ assert(type(scheduled) == "function")
 assert(#executed_commands == 0, "launch was not deferred")
 scheduled()
 assert(executed_commands[1] == "test -x /var/local/kmc/bin/sh_integration_launcher")
+assert(#shown == 1)
+assert(shown[1].icon == nil)
+assert(shown[1].text == "KUAL Next is starting.")
+assert(#executed_commands == 1, "handoff waits for the notification to repaint")
+assert(#events == 0)
+assert(quit_code == nil)
+scheduled()
 assert(executed_commands[2]:find("kual-next-return-to-koreader", 1, true))
 assert(executed_commands[2]:find("pidof koreader.sh", 1, true))
 assert(executed_commands[2]:find(
@@ -122,7 +132,6 @@ assert(executed_commands[2]:find(
 assert(not executed_commands[2]:find("launcher.sh", 1, true))
 assert(#events == 1 and events[1].name == "Close")
 assert(quit_code == 86)
-assert(#shown == 0)
 
 executed_commands = {}
 os.execute = function(command)
@@ -135,9 +144,9 @@ plugin:onOpenKUALNext()
 assert(type(scheduled) == "function")
 scheduled()
 assert(#warnings == 1)
-assert(#shown == 1)
-assert(shown[1].icon == "notice-warning")
-assert(shown[1].text:find("requires SH Integration", 1, true))
+assert(#shown == 2)
+assert(shown[2].icon == "notice-warning")
+assert(shown[2].text:find("requires SH Integration", 1, true))
 assert(#executed_commands == 1)
 assert(#events == 1)
 assert(quit_code == nil)
@@ -150,9 +159,13 @@ end
 scheduled = nil
 plugin:onOpenKUALNext()
 scheduled()
+assert(#shown == 3)
+assert(shown[3].text == "KUAL Next is starting.")
+assert(#executed_commands == 1)
+scheduled()
 assert(#warnings == 2)
-assert(#shown == 2)
-assert(shown[2].text:find("/var/tmp/kual-next.log", 1, true))
+assert(#shown == 4)
+assert(shown[4].text:find("/var/tmp/kual-next.log", 1, true))
 assert(#events == 1)
 assert(quit_code == nil)
 
