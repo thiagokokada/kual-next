@@ -28,6 +28,7 @@
         openssh
         perl
         pkg-config
+        python3
         shellcheck
         shfmt
         unzip

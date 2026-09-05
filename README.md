@@ -60,6 +60,13 @@ the copy steps above. Allow your computer to replace the existing KUAL Next
 files, then restart KOReader if it is installed. Your installed extensions are
 stored separately and will not be removed.
 
+### Installation with KPM
+
+If you use [Kindle Package Manager
+(KPM)](https://kindlemodding.org/kindle-dev/kpm/creating-a-package.html),
+download `kual-next_<version>_kindlehf.kpkg` from the release and install it
+with KPM.
+
 ## Supported extension contract
 
 The launcher scans `/mnt/us/extensions` for `config.xml` files and their JSON
@@ -170,9 +177,11 @@ make check
 make package
 ```
 
-The package is written to `dist/kual-next-<version>-kindlehf.zip`. Extract it
-at the Kindle USB storage root for testing. The scriptlet metadata uses the
-bundled `kual-next/icon.png` as its Kindle library cover.
+`make package` writes two artifacts: `dist/kual-next-<version>-kindlehf.zip`
+for USB installation and `dist/kual-next_<version>_kindlehf.kpkg` for KPM.
+Extract the ZIP at the Kindle USB storage root for testing, or install the
+`.kpkg` with KPM. The scriptlet metadata uses the bundled `kual-next/icon.png`
+as its Kindle library cover.
 
 Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
 
@@ -182,5 +191,5 @@ Runtime diagnostics are appended to `/var/tmp/kual-next.log`.
 landed on `main` and CI has passed, run the `Release` workflow. It derives the
 stable SemVer tag from `VERSION` and creates it at the exact `main` commit that
 it successfully built. If the tag already exists, the workflow aborts; existing
-tags are never moved. It publishes the package and its SHA-256 checksum with
-generated release notes, and does not publish prereleases.
+tags are never moved. It publishes both package formats and their SHA-256
+checksums with generated release notes, and does not publish prereleases.

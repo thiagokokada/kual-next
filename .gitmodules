@@ -1,3 +1,6 @@
 [submodule "third_party/FBInk"]
 	path = third_party/FBInk
 	url = https://github.com/NiLuJe/FBInk.git
+[submodule "third_party/KPM"]
+	path = third_party/KPM
+	url = https://github.com/KindleModding/KPM.git

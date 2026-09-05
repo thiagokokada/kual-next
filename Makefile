@@ -10,6 +10,7 @@ HOST_CFLAGS ?= -O2 -g -std=c11 -Wall -Wextra -Wpedantic -Werror
 SANITIZER_CFLAGS ?= -O1 -g -std=c11 -Wall -Wextra -Wpedantic -Werror -fno-omit-frame-pointer -fsanitize=address,undefined
 SSH ?= ssh
 SCP ?= scp
+PYTHON ?= python3
 SSH_ARGS ?=
 SCP_ARGS ?=
 CPPFLAGS := -Iinclude -Ithird_party -DKUAL_NEXT_VERSION='"$(VERSION)"'
@@ -39,9 +40,12 @@ DEVICE_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/kindle/%.o,$(DEVICE_SOURCES)) 
 	$(BUILD_DIR)/kindle/yxml.o
 DEVICE_BINARY := $(BUILD_DIR)/kindle/$(PROJECT)
 PACKAGE := $(DIST_DIR)/$(PROJECT)-$(VERSION)-kindlehf.zip
+KPM_PACKAGE := $(DIST_DIR)/$(PROJECT)_$(VERSION)_kindlehf.kpkg
+KPM_BUILD_DIR := $(BUILD_DIR)/kpm-package
+KPM_HELPER := $(CURDIR)/third_party/KPM/kpm-helper.py
 KOREADER_PLUGIN := assets/koreader/kualnext.koplugin
 
-.PHONY: all host format-check shell-format shell-format-check shellcheck test sanitize toolchain kindle check package deploy device-ui-test clean
+.PHONY: all host format-check shell-format shell-format-check shellcheck test sanitize toolchain kindle check package package-stage package-zip package-kpm deploy device-ui-test clean
 all: host
 
 host: $(HOST_BINARY)
@@ -76,12 +80,12 @@ shellcheck:
 test: format-check shell-format-check shellcheck $(HOST_BINARY) $(TEST_BINARY) sanitize
 	KUAL_TEST_VERSION="$(VERSION)" sh ./tests/run.sh $(HOST_BINARY)
 	$(TEST_BINARY) tests/fixtures/extensions
-	sh ./tests/check-fonts.sh
-	sh ./tests/check-deploy.sh
-	sh ./tests/check-device-ui.sh
+	./tests/check-fonts.sh
+	./tests/check-deploy.sh
+	./tests/check-device-ui.sh
 	$(LUAJIT) tests/koreader_plugin.lua "$(KOREADER_PLUGIN)/main.lua" "$(KOREADER_PLUGIN)/_meta.lua"
-	sh ./tests/check-toolchain.sh
-	sh ./tests/check-release.sh
+	./tests/check-toolchain.sh
+	./tests/check-release.sh
 	actionlint
 
 toolchain:
@@ -115,7 +119,9 @@ check: test $(DEVICE_BINARY)
 	$(DEVICE_READELF) -A $(DEVICE_BINARY) | grep -q 'Tag_ABI_VFP_args: VFP registers'
 	! $(DEVICE_READELF) -d $(DEVICE_BINARY) 2>/dev/null | grep -q NEEDED
 
-package: check
+package: package-zip package-kpm
+
+package-stage: check
 	rm -rf "$(BUILD_DIR)/package"
 	mkdir -p "$(BUILD_DIR)/package/kual-next/bin" "$(BUILD_DIR)/package/kual-next/fonts" "$(BUILD_DIR)/package/kual-next/LICENSES" "$(BUILD_DIR)/package/documents" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin" "$(DIST_DIR)"
 	cp $(DEVICE_BINARY) "$(BUILD_DIR)/package/kual-next/bin/kual-next"
@@ -132,8 +138,25 @@ package: check
 	cp "$(KOREADER_PLUGIN)/main.lua" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/main.lua"
 	cp "$(KOREADER_PLUGIN)/_meta.lua" "$(BUILD_DIR)/package/koreader/plugins/kualnext.koplugin/_meta.lua"
 	find "$(BUILD_DIR)/package" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
+
+package-zip: package-stage
 	rm -f "$(PACKAGE)"
 	cd "$(BUILD_DIR)/package" && find . -type f -print | LC_ALL=C sort | zip -X -q "$(CURDIR)/$(PACKAGE)" -@
+
+package-kpm: package-stage
+	rm -rf "$(KPM_BUILD_DIR)"
+	mkdir -p "$(KPM_BUILD_DIR)/payload"
+	cp -R "$(BUILD_DIR)/package/kual-next" "$(KPM_BUILD_DIR)/payload/kual-next"
+	cp -R "$(BUILD_DIR)/package/koreader" "$(KPM_BUILD_DIR)/payload/koreader"
+	mkdir -p "$(KPM_BUILD_DIR)/payload/documents"
+	cp "$(BUILD_DIR)/package/documents/KUAL Next.sh" "$(KPM_BUILD_DIR)/payload/documents/KUAL Next.sh"
+	cp assets/kpm/install.sh assets/kpm/uninstall.sh assets/kpm/launch.sh "$(KPM_BUILD_DIR)"
+	sed 's/@VERSION@/$(VERSION)/; /"version":/ s/\./, /g' assets/kpm/manifest.json.in >"$(KPM_BUILD_DIR)/manifest.json"
+	find "$(KPM_BUILD_DIR)" -exec touch -d '2000-01-01 00:00:00 UTC' {} +
+	rm -f "$(KPM_PACKAGE)"
+	test -f "$(KPM_HELPER)"
+	$(PYTHON) "$(KPM_HELPER)" package pack "$(KPM_BUILD_DIR)" "$(DIST_DIR)"
+	./tests/check-kpm-package.sh "$(KPM_PACKAGE)" "$(VERSION)"
 
 deploy:
 	@test -n "$(KINDLE_HOST)" || { echo "KINDLE_HOST is required (for example: make deploy KINDLE_HOST=root@kindle)" >&2; exit 2; }

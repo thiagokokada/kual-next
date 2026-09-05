@@ -53,6 +53,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: kual-next-kindlehf
-          path: dist/kual-next-*-kindlehf.zip
+          path: |
+            dist/kual-next-*-kindlehf.zip
+            dist/kual-next_*_kindlehf.kpkg
           if-no-files-found: error
           retention-days: 14
