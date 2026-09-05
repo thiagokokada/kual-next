@@ -64,13 +64,14 @@ jobs:
         run: nix develop --command make toolchain
       - name: Build and verify package
         run: nix develop --command make package
-      - name: Create package checksum
+      - name: Create package checksums
         env:
           VERSION: ${{ steps.validate.outputs.version }}
         run: |
-          package="kual-next-$VERSION-kindlehf.zip"
           cd dist
-          sha256sum "$package" >"$package.sha256"
+          for package in "kual-next-$VERSION-kindlehf.zip" "kual-next_${VERSION}_kindlehf.kpkg"; do
+            sha256sum "$package" >"$package.sha256"
+          done
       - name: Preserve release assets
         uses: actions/upload-artifact@v7
         with:
@@ -78,6 +79,8 @@ jobs:
           path: |
             dist/kual-next-${{ steps.validate.outputs.version }}-kindlehf.zip
             dist/kual-next-${{ steps.validate.outputs.version }}-kindlehf.zip.sha256
+            dist/kual-next_${{ steps.validate.outputs.version }}_kindlehf.kpkg
+            dist/kual-next_${{ steps.validate.outputs.version }}_kindlehf.kpkg.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -108,9 +111,10 @@ jobs:
           RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          package="release-assets/kual-next-$VERSION-kindlehf.zip"
-          checksum="$package.sha256"
-          gh release create "$RELEASE_TAG" "$package" "$checksum" \
+          zip_package="release-assets/kual-next-$VERSION-kindlehf.zip"
+          kpm_package="release-assets/kual-next_${VERSION}_kindlehf.kpkg"
+          gh release create "$RELEASE_TAG" "$zip_package" "$zip_package.sha256" \
+            "$kpm_package" "$kpm_package.sha256" \
             --repo "$GITHUB_REPOSITORY" \
             --title "KUAL Next $VERSION" \
             --verify-tag \

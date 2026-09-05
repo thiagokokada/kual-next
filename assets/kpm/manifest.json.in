@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "id": "kual-next",
+  "name": "KUAL Next",
+  "author": "KUAL Next contributors",
+  "description": "A native launcher for KUAL JSON extensions on recent jailbroken Kindles.",
+  "version": [@VERSION@],
+  "dependencies": [],
+  "supported_platforms": ["kindlehf"]
+}
